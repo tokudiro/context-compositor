@@ -18,22 +18,33 @@
 
 ## GitHub Actions上でのダウンロード量（弱点の正直な記録）
 
-「軽量」を謳う前提で実測・調査したところ、**Mermaidを使う場合はcontext-compositorの方がQuartoよりダウンロード量が多い**という、意図と逆の結果になった。
+「軽量」を謳う前提で実測・調査したところ、**Mermaidを使う場合はcontext-compositorの方がQuartoより大幅にダウンロード量が多い**という、意図と逆の結果になった（後述のとおり、当初の想定よりもさらに悪い実態が判明した）。
 
 | | ダウンロード量 | 内訳 |
 | --- | --- | --- |
 | Quarto（Mermaidなし、Typstバックエンドでbook合成） | 約140MB | [Quarto CLI tarball](https://github.com/quarto-dev/quarto-cli/releases/) 1本。Pandoc・Deno・[Typstまで同梱済み](https://quarto.org/docs/output-formats/typst.html)で追加ダウンロード不要 |
 | Quarto（Mermaidあり） | **約254MB** | 上記140MB + Mermaid図をPDF化するために必要な[Chrome Headless Shell](https://quarto.org/docs/blog/posts/2026-04-14-chrome-headless-shell.html) linux64版。[Google公式配布元](https://storage.googleapis.com/chrome-for-testing-public/152.0.7977.42/linux64/chrome-headless-shell-linux64.zip)で実測 **119,483,791バイト（約114MB、圧縮zip）** |
 | context-compositor（Mermaidなし） | 約60.5MB | pip: `typst`(32.6MB) + `markdown-it-py`(0.08MB) + `mdit-py-plugins`(0.05MB) + `PyYAML`(0.73MB) ≈ 33.5MB／Noto Sans JP: ZIP全体27MBをダウンロードし2ファイルだけ使用 |
-| context-compositor（Mermaidあり） | **約456MB** | 上記60.5MB + `npx -p @mermaid-js/mermaid-cli mmdc` の実測ダウンロード量 約396MB（mermaid本体83MB、FontAwesome41MB、react-aria系UIライブラリ29MB等、mermaidの依存ツリーが非常に大きい） |
-| Marp CLI（`npx @marp-team/marp-cli`） | 約123MB＋ブラウザ | HTML/CSSをヘッドレスブラウザ（Puppeteer-core）で描画してPDF化する方式。パッケージ自体は約123MBだが、Chromiumが別途必要（後述） |
+| context-compositor（Mermaidあり） | **約1,155MB（約1.1GB）** | 上記60.5MB + `npx -p @mermaid-js/mermaid-cli mmdc` の依存ツリー約396MB + ブラウザ自動ダウンロード約699MB（詳細は次項） |
+| Marp CLI（`npx @marp-team/marp-cli`） | 約123MB＋ブラウザ | HTML/CSSをヘッドレスブラウザ（Puppeteer-core）で描画してPDF化する方式。パッケージ自体は約123MBだが、Chromiumが別途必要 |
 | Vivliostyle CLI（`npx @vivliostyle/cli`） | 約242MB＋ブラウザ | Marpと同じくPuppeteer-core方式。CSS組版のフル機能を持つ分、依存ツリーがさらに大きい |
 
-**重要な違い**: 上表のcontext-compositor・Marp CLI・Vivliostyle CLIの数字には、ブラウザ本体のダウンロードを含めていない。3つとも`puppeteer-core`（Chromiumを自動ダウンロードしない版）を使っており、`build.py`はGitHub Actions上のシステムChrome（`ubuntu-latest`に標準搭載）を`PUPPETEER_EXECUTABLE_PATH`で明示的に指定することで、Puppeteerによる[150〜200MBのChromium再ダウンロード](https://deepwiki.com/mermaid-js/mermaid-cli/4.2-puppeteer-configuration-in-docker)を回避する設計になっている（11章）。Marp CLI・Vivliostyle CLIも同じ方式で回避できると考えられるが未確認。
+### ブラウザの扱い（重要な訂正）
 
-一方Quartoは、自前で管理するChrome Headless Shellを`quarto install`相当の仕組みで明示的に取得する方式であり（上記114MBが実測値）、システムのChromeをそのまま使う設定が可能かどうかは今回確認できなかった。つまり**Quartoの114MBは「必ず追加でかかる実測コスト」、context-compositorの数字は「システムChromeを使う前提でブラウザ分がゼロになっている」**という、前提の異なる数字である点に注意。
+当初「`build.py`はシステムChromeを再利用する設計（11章）なのでブラウザ分のダウンロードはゼロ」と記載していたが、**これは誤りだった**。`build.py`は実際には`PUPPETEER_EXECUTABLE_PATH`を一度も設定しておらず、11章の記述は設計意図に留まり実装されていない。実際に`npx -p @mermaid-js/mermaid-cli mmdc`を実行したところ、`puppeteer-core`が自前でブラウザを探しに行き、見つからなかったため`~/.cache/puppeteer/`配下に次の2つを自動ダウンロードしていたことを確認した。
 
-それでも、Quartoの前提（自前ブラウザ込みで114MB）と、context-compositorが仮に同じ前提でブラウザを自前取得したとしても（+150〜200MB程度と推定）、**Mermaid本体の依存ツリー（約396MB、ブラウザとは別に必要）の方が支配的**であり、Quarto側の合計約254MBを上回る。ブラウザの有無に関わらず、mermaid.js本体とその周辺ライブラリの重さ自体がcontext-compositor側の弱点である。「最小限のダウンロード」（2章）という設計原則との間に実際のギャップがある。
+- フルChrome: 約428MB
+- Chrome Headless Shell: 約272MB
+- 合計: **約699MB**
+
+npm依存ツリー（約396MB）とは完全に別枠で発生しており、当初の「約456MB」という数字は実態を大きく下回っていた。仕様と実装の乖離として[#34](https://github.com/tokudiro/context-compositor/issues/34)に記録した。
+
+一方Quartoは、自前で管理するChrome Headless Shellを明示的に取得する方式で、実測114MBのみ（フルChromeは取得しない）。**同じ「ブラウザを自前で持つ」場合の比較でも、Quarto（114MB）はcontext-compositor（699MB、しかも不要なフルChromeまで含む）よりはるかに軽い**。
+
+### 現実的な改善余地
+
+- [#34](https://github.com/tokudiro/context-compositor/issues/34): `PUPPETEER_EXECUTABLE_PATH`をシステムChromeへ明示的に設定すれば、ブラウザの追加ダウンロードをゼロ、または少なくとも軽量な Chrome Headless Shell 一本（272MB）に抑えられる
+- [#35](https://github.com/tokudiro/context-compositor/issues/35): `mermaid-cli`丸ごとではなく、Mermaid公式が配布する単一バンドルJSファイル（`mermaid.min.js`、**実測3.4MB**）を直接取得し、CDP（Chrome DevTools Protocol）を自前で叩く最小限スクリプトに置き換える案。実現すればnpm依存ツリー396MBの大部分（使っていないUML図・ELKレイアウト機能等）を削減できる
 
 Mermaidを使わない用途に限れば、context-compositorはQuartoよりダウンロード量が少ない（60.5MB対140MB）。この差はNoto SansフォントZIPの無駄（27MBダウンロードして9.2MBしか使わない）を解消すればさらに縮められる（今後の課題）。
 
