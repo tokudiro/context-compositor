@@ -2,7 +2,7 @@
 
 AIが生成し、人間が加筆・修正する複数のテキストファイルを、それぞれ独立した「コンテキスト」として扱い、1つの人間可読なPDF文書へ決定論的に組み上げる（compose）ツールです。
 
-詳細な設計方針・実装状況は [doc/specification.md](doc/specification.md) を参照してください。このREADMEは最短で使い始めるための要点のみを記載します。
+詳細な設計方針・実装状況は [doc/specification.md](doc/specification.md) を参照してください。このREADMEは最短で使い始めるための要点のみを記載します。Quarto等の汎用ツールとの違いは [doc/diff.md](doc/diff.md) にまとめています。
 
 ## 特徴
 
