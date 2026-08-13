@@ -6,6 +6,8 @@ import subprocess
 import hashlib
 import shutil
 import argparse
+import urllib.request
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
@@ -414,6 +416,50 @@ def default_config():
         }
     }
 
+# CJKフォント(Noto Sans JP)の取得元。バイナリはリポジトリに同梱せず、初回ビルド時にのみ
+# ここから取得しtool_dir/.fonts-cache/に保存する（2章の「最小限のダウンロード」方針）。
+# 版とSHA256を固定し、同梱バイナリと違って取得結果が変わらないようにする（9章の決定論的出力）。
+NOTO_SANS_JP_RELEASE_URL = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/16_NotoSansJP.zip"
+NOTO_SANS_JP_FILES = {
+    "NotoSansJP-Regular.otf": "dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073",
+    "NotoSansJP-Bold.otf": "1b0edfb500b73a4fa8a4fcaae1bbbd403994e08e73e3e0da37e70d3853f42c5f",
+}
+
+def ensure_fonts(tool_dir):
+    """Noto Sans JP（Regular/Bold）が tool_dir/.fonts-cache/NotoSansJP/ になければダウンロードする。
+    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
+    font_dir = os.path.join(tool_dir, ".fonts-cache", "NotoSansJP")
+    os.makedirs(font_dir, exist_ok=True)
+
+    missing = [name for name in NOTO_SANS_JP_FILES if not os.path.exists(os.path.join(font_dir, name))]
+    if not missing:
+        return font_dir
+
+    print("[Info] Downloading Noto Sans JP font (one-time; cached under .fonts-cache/)...")
+    zip_path = os.path.join(font_dir, "_download.zip")
+    try:
+        urllib.request.urlretrieve(NOTO_SANS_JP_RELEASE_URL, zip_path)
+        with zipfile.ZipFile(zip_path) as zf:
+            for name in missing:
+                data = zf.read(name)
+                digest = hashlib.sha256(data).hexdigest()
+                if digest != NOTO_SANS_JP_FILES[name]:
+                    print(f"[Error] Checksum mismatch for {name}: expected {NOTO_SANS_JP_FILES[name]}, got {digest}")
+                    sys.exit(1)
+                with open(os.path.join(font_dir, name), "wb") as f:
+                    f.write(data)
+    except zipfile.BadZipFile as e:
+        print(f"[Error] Failed to download fonts (bad zip): {e}")
+        sys.exit(1)
+    except OSError as e:
+        print(f"[Error] Failed to download fonts: {e}")
+        sys.exit(1)
+    finally:
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+    return font_dir
+
 def load_config_file(config_path):
     """指定された1ファイル(yaml/json)から設定を読み込む。存在しなければFail-fast。"""
     config = default_config()
@@ -457,6 +503,8 @@ def parse_args():
 def build():
     tool_dir = os.path.dirname(os.path.abspath(__file__))
     args = parse_args()
+
+    font_dir = ensure_fonts(tool_dir)
 
     # 汎用ツールとして、呼び出し元プロジェクトが持つ設定ファイルを指定できるようにする。
     # inputs.dir/output.dir などプロジェクト固有の相対パスは、このconfigファイルの
@@ -651,7 +699,7 @@ def build():
     out_pdf = os.path.join(outputs_dir, config["output"]["filename"])
 
     try:
-        typst_lib.compile(temp_typ_path, output=out_pdf, root=typst_root)
+        typst_lib.compile(temp_typ_path, output=out_pdf, root=typst_root, font_paths=[font_dir])
         print(f"[Success] Generated PDF: {out_pdf}")
     except typst_lib.TypstError as e:
         print(f"[Error] Compile failed: {e}")

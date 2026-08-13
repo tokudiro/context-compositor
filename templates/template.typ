@@ -24,8 +24,9 @@
   cover_page_number: false,
   doc,
 ) = {
-  // フォント設定（Windows環境を想定）
-  set text(font: ("Yu Gothic", "Meiryo", "Arial"), size: 10.5pt)
+  // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
+  // OSフォントは直接指定しない。Noto Sans JP に無いグリフはTypstが自動でシステムフォントにフォールバックする）
+  set text(font: "Noto Sans JP", size: 10.5pt)
   
   // プラグイン: Graphviz (dot) 自動レンダリングと、はみ出し防止の自動縮小
   import "@preview/diagraph:0.3.7": render

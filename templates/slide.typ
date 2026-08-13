@@ -29,8 +29,9 @@
   cover_page_number: true,
   doc,
 ) = {
-  // フォント設定
-  set text(font: ("Yu Gothic", "Meiryo", "Arial"), size: 18pt)
+  // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
+  // OSフォントは直接指定しない。Noto Sans JP に無いグリフはTypstが自動でシステムフォントにフォールバックする）
+  set text(font: "Noto Sans JP", size: 18pt)
 
   // Graphviz
   import "@preview/diagraph:0.3.7": render

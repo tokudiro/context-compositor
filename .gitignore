@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .context-compositor/
+.fonts-cache/
 config.yaml
 config.json
 sample/*.pdf

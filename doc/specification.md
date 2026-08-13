@@ -13,7 +13,7 @@ AIが生成し、人間が加筆・修正するテキストファイルを、1�
 * **Python中心・最小限のダウンロード**: コアはPython（`build.py`）のみで完結する。追加が必要なものも、その場でのダウンロードで完結させ、常駐サーバーやコンテナは要求しない。
   * Typstコンパイラ: バイナリを同梱せず、PyPIのホイール経由で取得する（3章）。
   * オプトインの図表プラグイン: MermaidはNode.js、PlantUMLはJREを`npx`等でその場取得する（11章）。
-  * 日本語CJKフォント: リポジトリに同梱せず取得（ダウンロード）する方式とする。具体的な取得手段は未確定（9章・13章）。
+  * 日本語CJKフォント: リポジトリに同梱せず取得（ダウンロード）する方式とする。Noto Sans JP（Regular/Bold）を初回ビルド時に `tool_dir/.fonts-cache/` へダウンロード・キャッシュし、以降はキャッシュを使う（9章）。
 * **外部サーバー・SaaS非依存**: どこかの外部サーバーやSaaSに依存しない。図表描画を含め、外部APIへの通信によるコンテンツ生成は一切行わず、常に完全ローカルで完結させる。これは絶対要件であり、11章のプラグインにも適用される。
 * **GitHub Actions上での完結**: 上記2点の帰結として、GitHub Actions（`ubuntu-latest` などのGitHub-hosted runner）上だけで、セルフホストサーバーなしに完結してビルドできる。
 * **ローカル環境（Windows/Linux/macOS）**: 同じ理由で、Python（および必要に応じてNode.js/JRE等の軽量ランタイム）さえ用意すれば、Windows/Linux/macOSいずれでも同一の手順でビルドできる。
@@ -107,7 +107,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
   * **行頭ブロック記法のエスケープ**: 行頭の `=` `-` `+` `/` `1.` は Typst の見出し・リスト等として解釈され、地の文が勝手に見出し化して目次にまで混入する。改行直後のテキストは行頭記号をエスケープする（実測で確認済みの実害）。
 * **リスト構造の忠実な再現**: markdown-it はタイトなリストの段落トークンに `hidden` を立てる。これを無視すると Typst 側が loose list と解釈し、箇条書きが間延びする。リストの入れ子はスタックの深さに応じたインデントで出力し、階層を保持する。
 * **決定論的出力とバージョン固定**: `requirements.txt` のパーサーライブラリに加え、Typstコンパイラ本体および利用する全プラグイン（例: `diagraph:0.3.7`）のバージョンを厳密固定する。Typstコンパイラ自体はPyPIパッケージ（3章）で版固定されているため、同梱バイナリとの食い違いは構造的に起きない。
-* **日本語フォントの指定**: OSのデフォルトフォントに依存せず、CJK対応のオープンソースフォント（Noto Sans JPやIPAex等）を`typst compile --font-path`で明示的に指定する。テンプレート側で`Yu Gothic`等のOSフォントを直接指定してはならない（取得方針は2章）。**（未実装）** 現状は`templates/template.typ`・`templates/slide.typ`とも`Yu Gothic`/`Meiryo`を直接指定しており、`font_path`も渡されていない。
+* **日本語フォントの指定**: OSのデフォルトフォントに依存せず、CJK対応のオープンソースフォントを`font_paths`（Typst Python APIの`typst.compile(..., font_paths=[...])`、CLIの`--font-path`に相当）で明示的に指定する。テンプレート側で`Yu Gothic`等のOSフォントを直接指定してはならない。**（実装済み）** 採用フォントは Noto Sans JP（[SIL Open Font License](https://github.com/notofonts/noto-cjk/blob/main/Sans/OFL.txt)、再配布可）。取得方法は2章、実装は`build.py`の`ensure_fonts()`を参照。`templates/template.typ`・`templates/slide.typ`とも`set text(font: "Noto Sans JP", ...)`のみを指定し、OSフォント名は書かない。Noto Sans JPに無いグリフ（絵文字等）はTypstが自動でシステムフォントにフォールバックする。
 
 ## 10. 動的ページレイアウトとデータ駆動型アグリゲーション
 * **章ごとのページ設定 (Dynamic Layout)**: ドキュメント全体または特定の章（Markdownファイル単位）に、独立して用紙サイズ（例: A4, A3）と用紙の向き（Landscape/Portrait）を指定できる。設定は `config.yaml` のグローバル設定および章ごとのローカル設定（上書き）として定義する。
@@ -141,6 +141,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * `document.cover_page_number` による表紙のページ番号表示切り替え（7章）
 * Mermaid対応（11章）、`layout-right`/`layout-compare` によるレイアウト拡張、`fit-image()` による画像自動縮小
 * Graphviz(dot)対応（11章）: テンプレート側の `show raw.where` と `diagraph` による自動レンダリング
+* CJKフォント（Noto Sans JP）の取得と `font_paths` 指定（9章）: `build.py` の `ensure_fonts()` が `tool_dir/.fonts-cache/` へ初回ダウンロード・SHA256検証・キャッシュし、`typst.compile(..., font_paths=[...])` に渡す。テンプレートはOSフォント名を直接指定しない
 * **`--config <path>` によるプロジェクト側設定ファイルの指定**（4章）: `tool_dir`（ツール本体）と`project_dir`（configファイルの置き場所）を分離。`inputs.dir`/`output.dir`等は`project_dir`基準、`template.path`等は`tool_dir`基準で解決する。`--config`省略時はカレントディレクトリの`context-compositor.config.yaml`/`.json`を探す（`tool_dir`は探索しない。5章）。
 * `sample/context-compositor.config.yaml`（原稿・testcasesも同じ`sample/`配下）は、特定プロジェクト向けの実設定ではない汎用ドキュメントのサンプル一式（複数章・アグリゲート表・章ごとの用紙サイズ上書きの例）。実プロジェクトの設定はプロジェクト側リポジトリに置き、`--config`で指定する運用を想定。
 
@@ -149,7 +150,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * Marp ディレクティブの解釈と空ページ抑止（7章）
 * front-matterの`title`/`subtitle`/`author`/`date`/`paper_size`/`landscape`の適用（7章）: 現状は警告を出さないだけで値は読み捨てられており、`font_size`以外は効果がない
 * テンプレートへの `landscape` 反映、コンパイラ版の検証（9章・10章）
-* CJKフォントの取得と `--font-path` 指定（9章）: 現状テンプレートは `Yu Gothic`/`Meiryo` を直接指定しており、`build.py` も `font_path` を渡していない。取得手段（PyPIパッケージ経由かビルド時ダウンロードか等）も未確定
+* Mermaid図の絵文字がフルカラーで表示されない（10章・11章の既知の制限。カラー絵文字フォントの取得・`font_paths`への追加を検討中）
 * `--root` をドキュメントルートに閉じ込めるサンドボックス化（5章・8章）: `--root` は `tool_dir`・`project_dir`等の共通祖先であるため、`tool_dir` の親ディレクトリ以上を含みうる。8章の要件を厳密に満たすには、`--root` の計算から `tool_dir` を除外する等の見直しが必要
 * ビルド後の一時ファイルの自動削除（12章）: `.context-compositor/temp_build.typ` は生成されたまま残り続ける
 * `plugins.graphviz`/`plugins.plantuml`/`plugins.mermaid` の有効・無効切り替え（6章）: `config.yaml` のスキーマ上は存在するが `build.py` は読み取っていない
