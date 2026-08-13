@@ -54,4 +54,8 @@ python ../build.py
 
 ## 実装状況
 
-現在実装されているのは「`--config` で指定した（または自動検出した）設定ファイルに従い、複数のMarkdownファイルを1つのPDFへ結合する」というコア機能のみです。CLIオプションの拡張（出力先の上書き、テンプレート指定など）や、Markdown以外のフォーマット対応は構想段階です。詳細は [doc/specification.md](doc/specification.md) の13章「実装状況と残課題」を参照してください。
+現在実装されているのは「`--config` で指定した（または自動検出した）設定ファイルに従い、複数のMarkdownファイルを1つのPDFへ結合する」というコア機能のみです。CLIオプションの拡張（出力先の上書き、テンプレート指定など）や、Markdown以外のフォーマット対応は構想段階です。既知の課題・今後の予定は [GitHub Issues](https://github.com/tokudiro/context-compositor/issues) を参照してください。
+
+## ライセンス
+
+[MIT License](LICENSE)
