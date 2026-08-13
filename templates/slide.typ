@@ -26,11 +26,12 @@
   paper_size: "presentation-16-9",
   landscape: true,
   cover: true,
+  cover_page_number: true,
   doc,
 ) = {
   // フォント設定
   set text(font: ("Yu Gothic", "Meiryo", "Arial"), size: 18pt)
-  
+
   // Graphviz
   import "@preview/diagraph:0.3.7": render
   let render-graph(code) = layout(size => context {
@@ -42,20 +43,22 @@
       graph
     }
   })
-  
+
   show raw.where(lang: "dot"): it => align(center)[#render-graph(it.text)]
   show raw.where(lang: "graphviz"): it => align(center)[#render-graph(it.text)]
-  
-  // ページ設定
-  set page(
-    paper: paper_size,
-    margin: (x: 2cm, y: 1.5cm),
-    header: none,
-    footer: align(right)[#text(16pt, fill: luma(100))[#context counter(page).display("1")]]
-  )
-  
+
+  let page-number-footer = align(right)[#text(16pt, fill: luma(100))[#context counter(page).display("1")]]
+
   // 表紙（cover: false のときは出さず、Markdown側のタイトルスライドに任せる）
+  // 表紙だけページ番号表示を切り替えたいので、本文とは別に一時的な set page で囲む
+  // （Typstの set は現在のブロックを抜けると元に戻るため、表紙用ページ設定を本文へ漏らさず適用できる）
   if cover and title != none {
+    set page(
+      paper: paper_size,
+      margin: (x: 2cm, y: 1.5cm),
+      header: none,
+      footer: if cover_page_number { page-number-footer } else { none }
+    )
     align(center + horizon)[
       #text(44pt, weight: "bold", fill: rgb("#003366"))[#title]
       #v(2em)
@@ -65,7 +68,15 @@
     ]
     pagebreak()
   }
-  
+
+  // 本文のページ設定（ページ番号は常に表示）
+  set page(
+    paper: paper_size,
+    margin: (x: 2cm, y: 1.5cm),
+    header: none,
+    footer: page-number-footer
+  )
+
   // 本文の設定
   set par(justify: true, leading: 1.2em)
   

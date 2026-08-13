@@ -509,6 +509,13 @@ def build():
     # 既定(template)のときは引数を渡さず、cover 引数を持たない既存テンプレートとの互換を保つ
     cover_arg = '' if cover_mode in ('template', 'replace') else '  cover: false,\n'
 
+    # 表紙のページ番号表示。未指定ならテンプレート自身の既定値に任せ、引数自体を渡さない
+    cover_page_number = doc_config.get('cover_page_number')
+    cover_page_number_arg = (
+        f'  cover_page_number: {str(bool(cover_page_number)).lower()},\n'
+        if cover_page_number is not None else ''
+    )
+
     date_str = doc_config.get("date", "")
     if date_str == "auto":
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -527,7 +534,7 @@ def build():
   date: "{safe_date}",
   paper_size: "{global_paper}",
   landscape: {str(global_landscape).lower()},
-{cover_arg}  doc,
+{cover_arg}{cover_page_number_arg}  doc,
 )
 
 """

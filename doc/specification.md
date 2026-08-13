@@ -88,6 +88,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
   * `markdown`: テンプレートの表紙を出さず、Markdown 先頭のスライドをそのまま表紙にする。
   * `none`: どちらも出さない。
   * `replace` / `none` で取り除いた見出しは、サイレントな脱落を避けるため必ずログに出力する。テンプレートには `cover` 引数を追加するが、既定値のときは引数自体を渡さず、`cover` を持たない既存テンプレートとの互換を保つ。
+* **表紙のページ番号表示**: `document.cover_page_number`（真偽値）で、表紙（1ページ目）にページ番号を出すかどうかを切り替えられる。未指定時はテンプレート自身の既定値に従う（`templates/slide.typ` は表示・`templates/template.typ` は非表示）。本文側のページ番号表示には影響しない。`cover` 引数と同様、未指定時は引数自体を渡さず既存テンプレートとの互換を保つ。
 * **ディレクティブ以外の HTML タグ**（`<br>` 等）は行番号付きで警告する（8章のフェイルファスト方針）。ディレクティブ構文に合致するもののみを解釈し、それ以外は無害化しない。
 
 ## 8. 人間とAIの協調執筆
@@ -137,6 +138,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * `inputs.dir` 設定の実使用
 * front-matter の本文からの切り離し（7章）。`font_size` のみ設定として取り込み対応（他のキーは引き続き破棄）
 * `document.cover`（template / replace / markdown / none）による表紙の二重化の解消（7章）
+* `document.cover_page_number` による表紙のページ番号表示切り替え（7章）
 * Mermaid対応（11章）、`layout-right`/`layout-compare` によるレイアウト拡張、`fit-image()` による画像自動縮小
 * Graphviz(dot)対応（11章）: テンプレート側の `show raw.where` と `diagraph` による自動レンダリング
 * **`--config <path>` によるプロジェクト側設定ファイルの指定**（4章）: `tool_dir`（ツール本体）と`project_dir`（configファイルの置き場所）を分離。`inputs.dir`/`output.dir`等は`project_dir`基準、`template.path`等は`tool_dir`基準で解決する。`--config`省略時はカレントディレクトリの`context-compositor.config.yaml`/`.json`を探す（`tool_dir`は探索しない。5章）。

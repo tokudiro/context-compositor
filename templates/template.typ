@@ -21,6 +21,7 @@
   paper_size: "a4",
   landscape: false,
   cover: true,
+  cover_page_number: false,
   doc,
 ) = {
   // フォント設定（Windows環境を想定）
@@ -46,7 +47,10 @@
   // 1. 表紙 (Cover Page) : cover: false のときは省略する
   // -------------------------
   if cover {
-    set page(paper: "a4", flipped: false, margin: 2.5cm, header: none, footer: none)
+    set page(
+      paper: "a4", flipped: false, margin: 2.5cm, header: none,
+      footer: if cover_page_number { align(center)[#text(10pt)[#context counter(page).display("1")]] } else { none }
+    )
 
     align(center + horizon)[
       #text(24pt, weight: "bold")[#title]
