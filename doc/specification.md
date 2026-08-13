@@ -61,7 +61,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 | Markdown 内の画像・リンク先ファイル | その Markdown ファイルのディレクトリ |
 | `template.path`（実装時点） | 常にツール同梱 `templates/`（`tool_dir`）基準。プロジェクト側が独自テンプレートを持ち込む機能（名前とパスを区別して解決）は未実装（[#23](https://github.com/tokudiro/context-compositor/issues/23)）。 |
 
-* **ドキュメントルート（`--root`）**: `tool_dir`・`project_dir`・実際の `inputs_dir`/`outputs_dir` の共通の親ディレクトリを動的に計算する。`--root` は `tool_dir` の親ディレクトリまで含みうるため、8章の「ツール本体のディレクトリを `--root` にしない」というサンドボックス要件との関係で注意が必要（[#19](https://github.com/tokudiro/context-compositor/issues/19)）。
+* **ドキュメントルート（`--root`）**: `project_dir`・実際の `inputs_dir`/`outputs_dir`・`work_dir`（`project_dir/.context-compositor`）の共通の親ディレクトリを動的に計算する。`tool_dir`（ツール本体のディレクトリ）は含めない。テンプレートは`tool_dir`配下にあるが、`build.py`がビルドのたびに`work_dir`へコピーしてからそのコピーを参照するため、`--root`を`tool_dir`まで広げる必要がない（8章のサンドボックス要件）。この結果、Markdown内の画像等が`project_dir`の外を参照している場合はビルドエラーになる。
 * **設定ファイルの指定**: `--config` で明示するか、省略時はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（`tool_dir` は探索しない）。どちらもなければエラーで終了する。
 * **出力先**: `config.yaml` の `output.dir`/`output.filename` に従い `project_dir` 基準で決まる。入力パスからの出力先自動判定やCLIオプションでの上書きは未実装で、構想段階（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
@@ -126,6 +126,6 @@ python build.py --config <path/to/context-compositor.config.yaml>
    * **画像サイズの自動調整**: `templates/slide.typ` の `fit-image()` が幅・高さそれぞれの縮小率を計算し、小さい方を採用する。高さの上限は固定値`MAX_IMG_HEIGHT`（現在12cm）。Typstの`layout()`が返す`size`は「ページの残りスペース」ではなく「コンテナ全体のサイズ」で、見出しや本文が使った分を考慮できないため、動的計算ではなく安全側の固定値にしている。
 
 ## 12. ビルド成果物と一時ファイル
-* 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートのコピーは行わず、`--root` 起点のルート絶対パス（`/...`）でテンプレート・画像を参照して解決する（5章）。
+* 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートは同じ `.context-compositor/_template.typ` へコピーしてから参照する（5章・8章のサンドボックス要件）。画像はコピーせず、`--root` 起点のルート絶対パス（`/...`）で参照して解決する。
 * `.context-compositor/` はビルドのたびに `temp_build.typ` を上書き生成するのみで、ビルド後の削除は未実装（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
 * 出力 PDF が既に開かれている等で書き込めない場合は、部分的な破損ファイルを残さず明確なエラーで終了する。

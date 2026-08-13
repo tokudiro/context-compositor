@@ -530,17 +530,27 @@ def build():
     # 【修正】ハードコードをやめ config の inputs.dir を実際に使用する
     inputs_dir = os.path.normpath(os.path.join(project_dir, config.get("inputs", {}).get("dir") or "inputs"))
 
-    # tool_dir・project_dir・inputs_dir・outputs_dirすべてを跨いでtypstから参照できるよう、
-    # それら全ての共通の親ディレクトリを --root にする
-    # （仕様書8章: ツール本体を--rootにしない、を維持しつつ、複数ディレクトリに拡張）
-    typst_root = os.path.commonpath([tool_dir, project_dir, inputs_dir, outputs_dir])
+    work_dir = os.path.join(project_dir, ".context-compositor")
+    os.makedirs(work_dir, exist_ok=True)
+
+    # 【修正】8章のセキュリティ要件（ツール本体のディレクトリを--rootにしない）を満たすため、
+    # tool_dirは--rootに含めない。テンプレートはtool_dir配下にあり#importでの参照が必要なため、
+    # work_dir（project_dir配下、--rootの内側）へコピーしてから、コピーの方を参照する。
+    template_abs_path = os.path.join(tool_dir, config["template"]["path"])
+    if not os.path.exists(template_abs_path):
+        print(f"[Error] Template not found: {template_abs_path}")
+        sys.exit(1)
+    template_copy_path = os.path.join(work_dir, "_template" + os.path.splitext(template_abs_path)[1])
+    shutil.copyfile(template_abs_path, template_copy_path)
+
+    # project_dir・inputs_dir・outputs_dir・work_dirすべてを跨いでtypstから参照できるよう、
+    # それら全ての共通の親ディレクトリを --root にする（tool_dirは含めない）
+    typst_root = os.path.commonpath([project_dir, inputs_dir, outputs_dir, work_dir])
 
     doc_config = config.get("document", {})
-    # template.path はツール自身のリソース(templates/)なのでtool_dir基準。
     # 生成コード(temp_build.typ)の実際の置き場所に依存させないよう、typst_root起点の
     # ルート絶対パスに変換する（.context-compositor/等サブディレクトリに置いても解決できる）。
-    template_abs_path = os.path.join(tool_dir, config["template"]["path"])
-    template_path = "/" + os.path.relpath(template_abs_path, typst_root).replace(os.sep, '/')
+    template_path = "/" + os.path.relpath(template_copy_path, typst_root).replace(os.sep, '/')
     
     global_landscape = str(doc_config.get('landscape', False)).lower() == 'true'
     global_paper = doc_config.get('paper_size', 'a4')
@@ -690,8 +700,6 @@ def build():
     if current_landscape != global_landscape or current_paper != global_paper:
          typst_code += f'#set page(paper: "{global_paper}", flipped: {str(global_landscape).lower()})\n'
 
-    work_dir = os.path.join(project_dir, ".context-compositor")
-    os.makedirs(work_dir, exist_ok=True)
     temp_typ_path = os.path.join(work_dir, "temp_build.typ")
     with open(temp_typ_path, "w", encoding="utf-8") as f:
         f.write(typst_code)
