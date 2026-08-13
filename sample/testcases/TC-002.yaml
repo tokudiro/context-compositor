@@ -1,0 +1,11 @@
+id: TC-002
+title: パスワード間違いのエラー確認
+priority: Medium
+steps: '1. ログイン画面を開く
+
+  2. 誤ったパスワードを入力する
+
+  3. 「ログイン」ボタンをクリックする'
+expected: '* ログインできないこと
+
+  * Invalid credentials エラーが赤字で表示されること'

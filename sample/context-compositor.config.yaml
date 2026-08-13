@@ -1,0 +1,31 @@
+document:
+  title: "System Specification"
+  subtitle: "Next Generation Platform"
+  author: "AI/Human Co-authoring Team"
+  date: "2026-08-01"
+  landscape: false  # 全体を横にする場合は true にする
+  paper_size: "a4"  # a3, b5 などの用紙サイズ指定
+
+output:
+  filename: "System_Specification.pdf"
+  dir: "."
+
+template:
+  path: "templates/template.typ"
+
+plugins:
+  graphviz: true
+  plantuml: false
+  mermaid: false
+
+inputs:
+  dir: "."
+
+chapters:
+  - "01_intro.md"
+  - "02_features.md"
+  - file: "03_architecture.md"
+    paper_size: "a4"  # 必要に応じてこの章だけa3等に変更可能
+  - aggregate: "testcases"
+    title: "システムテスト仕様書 (マトリクス)"
+    landscape: true   # テーブルは横長になりやすいのでA4横を指定
