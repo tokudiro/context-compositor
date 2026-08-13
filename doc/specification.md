@@ -50,7 +50,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * 上記以外のオプション（出力先の上書き、テンプレート指定、用紙設定、ログレベル等）は存在しない。
 * **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。
 
-`context-compositor` コマンド化、複数ファイル/ディレクトリの直接指定、追加オプション等の拡張は構想段階であり、実装するかどうかも含めて未定（13章の将来課題）。
+`context-compositor` コマンド化、複数ファイル/ディレクトリの直接指定、追加オプション等の拡張は構想段階であり、実装するかどうかも含めて未定（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
 ## 5. パス解決規則
 パスの基準点は次のとおり一意に定める。
@@ -59,18 +59,18 @@ python build.py --config <path/to/context-compositor.config.yaml>
 | --- | --- |
 | `config.yaml` 内のすべての相対パス（`chapters`, `inputs.dir`, `output.*`, `aggregate`） | その `config.yaml` が置かれたディレクトリ（`project_dir`） |
 | Markdown 内の画像・リンク先ファイル | その Markdown ファイルのディレクトリ |
-| `template.path`（実装時点） | 常にツール同梱 `templates/`（`tool_dir`）基準。プロジェクト側が独自テンプレートを持ち込む機能（名前とパスを区別して解決）は未実装（13章の未対応）。 |
+| `template.path`（実装時点） | 常にツール同梱 `templates/`（`tool_dir`）基準。プロジェクト側が独自テンプレートを持ち込む機能（名前とパスを区別して解決）は未実装（[#23](https://github.com/tokudiro/context-compositor/issues/23)）。 |
 
-* **ドキュメントルート（`--root`）**: `tool_dir`・`project_dir`・実際の `inputs_dir`/`outputs_dir` の共通の親ディレクトリを動的に計算する。`--root` は `tool_dir` の親ディレクトリまで含みうるため、8章の「ツール本体のディレクトリを `--root` にしない」というサンドボックス要件との関係で注意が必要（13章の未対応）。
+* **ドキュメントルート（`--root`）**: `tool_dir`・`project_dir`・実際の `inputs_dir`/`outputs_dir` の共通の親ディレクトリを動的に計算する。`--root` は `tool_dir` の親ディレクトリまで含みうるため、8章の「ツール本体のディレクトリを `--root` にしない」というサンドボックス要件との関係で注意が必要（[#19](https://github.com/tokudiro/context-compositor/issues/19)）。
 * **設定ファイルの指定**: `--config` で明示するか、省略時はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（`tool_dir` は探索しない）。どちらもなければエラーで終了する。
-* **出力先**: `config.yaml` の `output.dir`/`output.filename` に従い `project_dir` 基準で決まる。入力パスからの出力先自動判定やCLIオプションでの上書きは未実装で、構想段階（13章の将来課題）。
+* **出力先**: `config.yaml` の `output.dir`/`output.filename` に従い `project_dir` 基準で決まる。入力パスからの出力先自動判定やCLIオプションでの上書きは未実装で、構想段階（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
 ## 6. 設定ファイル (Configuration as Code)
 * `config.yaml` / `config.json` のどちらでも書けるが、内部では単一のスキーマ（正規化された辞書構造やPydantic等）に統合して扱い、パース処理の破綻を防ぐ。パスの基準は5章に従う。
 * ファイル順序、ページ設定、出力メタデータ、データ集約ディレクトリ（aggregate）を一元管理する。
-  * `plugins:`（Graphviz/PlantUML/Mermaidの有効・無効切り替え）はスキーマ上の予約項目だが、`build.py` はまだ読み取っていない。Graphvizは常時有効、Mermaidはフェンスがあれば常に描画される（13章の未対応）。
+  * `plugins:`（Graphviz/PlantUML/Mermaidの有効・無効切り替え）はスキーマ上の予約項目だが、`build.py` はまだ読み取っていない。Graphvizは常時有効、Mermaidはフェンスがあれば常に描画される（[#21](https://github.com/tokudiro/context-compositor/issues/21)）。
 * **設定の優先順位**: `config.yaml` の章別設定 ＞ グローバル設定 ＞ 内蔵デフォルト。CLIオプションによる上書きは、`--config` 以外のオプションが未実装のため現状存在しない（4章）。実装された場合はCLIオプションが最優先になる想定。
-* **設定ファイル自体は必須**: `--config`、またはカレントディレクトリからの自動検出（5章）で、いずれかの設定ファイルが必要。中身は最小限でよいが、`chapters` は現状ここで指定する以外の方法がない（入力パスからの自動導出は未実装。13章）。
+* **設定ファイル自体は必須**: `--config`、またはカレントディレクトリからの自動検出（5章）で、いずれかの設定ファイルが必要。中身は最小限でよいが、`chapters` は現状ここで指定する以外の方法がない（入力パスからの自動導出は未実装。[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 * YAML パーサ（PyYAML）が未導入のまま `config.yaml` を無視して既定値でビルドを続行してはならない。サイレントに誤った成果物が出るため即エラーとする。
 
 ## 7. Markdown 方言と Marp 互換
@@ -127,41 +127,5 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 ## 12. ビルド成果物と一時ファイル
 * 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートのコピーは行わず、`--root` 起点のルート絶対パス（`/...`）でテンプレート・画像を参照して解決する（5章）。
-* `.context-compositor/` はビルドのたびに `temp_build.typ` を上書き生成するのみで、ビルド後の削除は未実装（13章の未対応）。`.gitignore` への追加を推奨する。
+* `.context-compositor/` はビルドのたびに `temp_build.typ` を上書き生成するのみで、ビルド後の削除は未実装（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
 * 出力 PDF が既に開かれている等で書き込めない場合は、部分的な破損ファイルを残さず明確なエラーで終了する。
-
-## 13. 実装状況と残課題
-**対応済み**
-* タイトなリストの loose 化、リスト入れ子の平坦化、行頭ブロック記法のエスケープ漏れ（9章）
-* `typst-exec` のホワイトリスト化（8章）
-* 入力欠損・画像欠損の Fail-fast、画像パスを Markdown 基準で解決（5章）
-* `inputs.dir` 設定の実使用
-* front-matter の本文からの切り離し（7章）。`font_size` のみ設定として取り込み対応（他のキーは引き続き破棄）
-* `document.cover`（template / replace / markdown / none）による表紙の二重化の解消（7章）
-* `document.cover_page_number` による表紙のページ番号表示切り替え（7章）
-* Mermaid対応（11章）、`layout-right`/`layout-compare` によるレイアウト拡張、`fit-image()` による画像自動縮小
-* Graphviz(dot)対応（11章）: テンプレート側の `show raw.where` と `diagraph` による自動レンダリング
-* CJKフォント（Noto Sans JP）の取得と `font_paths` 指定（9章）: `build.py` の `ensure_fonts()` が `tool_dir/.fonts-cache/` へ初回ダウンロード・SHA256検証・キャッシュし、`typst.compile(..., font_paths=[...])` に渡す。テンプレートはOSフォント名を直接指定しない
-* **`--config <path>` によるプロジェクト側設定ファイルの指定**（4章）: `tool_dir`（ツール本体）と`project_dir`（configファイルの置き場所）を分離。`inputs.dir`/`output.dir`等は`project_dir`基準、`template.path`等は`tool_dir`基準で解決する。`--config`省略時はカレントディレクトリの`context-compositor.config.yaml`/`.json`を探す（`tool_dir`は探索しない。5章）。
-* `sample/context-compositor.config.yaml`（原稿・testcasesも同じ`sample/`配下）は、特定プロジェクト向けの実設定ではない汎用ドキュメントのサンプル一式（複数章・アグリゲート表・章ごとの用紙サイズ上書きの例）。実プロジェクトの設定はプロジェクト側リポジトリに置き、`--config`で指定する運用を想定。
-
-**未対応**
-* Markdown 以外のテキストファイル形式（プレーンテキスト、コードコメント、YAML/JSON/CSV等）への対応（1章）
-* Marp ディレクティブの解釈と空ページ抑止（7章）
-* front-matterの`title`/`subtitle`/`author`/`date`/`paper_size`/`landscape`の適用（7章）: 現状は警告を出さないだけで値は読み捨てられており、`font_size`以外は効果がない
-* テンプレートへの `landscape` 反映、コンパイラ版の検証（9章・10章）
-* Mermaid図の絵文字がフルカラーで表示されない（10章・11章の既知の制限。カラー絵文字フォントの取得・`font_paths`への追加を検討中）
-* `--root` をドキュメントルートに閉じ込めるサンドボックス化（5章・8章）: `--root` は `tool_dir`・`project_dir`等の共通祖先であるため、`tool_dir` の親ディレクトリ以上を含みうる。8章の要件を厳密に満たすには、`--root` の計算から `tool_dir` を除外する等の見直しが必要
-* ビルド後の一時ファイルの自動削除（12章）: `.context-compositor/temp_build.typ` は生成されたまま残り続ける
-* `plugins.graphviz`/`plugins.plantuml`/`plugins.mermaid` の有効・無効切り替え（6章）: `config.yaml` のスキーマ上は存在するが `build.py` は読み取っていない
-* PlantUML（Smetana）対応（11章）
-* `template.path` の名前/パス区別による解決（5章）: プロジェクト側が独自テンプレートを持ち込む機能。現状は常にツール同梱`templates/`を見る
-* GitHub Actionsから呼び出す実際のワークフロー定義（context-compositorとconfigを持つ側のリポジトリを兄弟ディレクトリとしてチェックアウトする想定。11章）
-
-**将来課題**（実装するかどうかも含めて未定の構想）
-* **CLIの拡張**: `context-compositor` コマンド化、複数ファイル/ディレクトリの直接指定、`-o`/`-t`/`--paper`/`--landscape`/`--keep-temp`/`-q`/`-v` 等のオプション追加。4章には現状実装（`--config`のみ）だけを記載しており、これらは載せていない。
-* **複合ハッシュによるキャッシュキー設計**: 起動コストが高い図表描画は再生成をスキップするが、古い図表の使い回し事故を防ぐため、キャッシュキーは「コンパイラのバージョン + プラグインのバージョン + 入力テキスト」の複合ハッシュとする。
-* **行番号マッピング**: AST変換時に元のMarkdownの行番号を保持し、Typstのエラーを「Markdownの何行目に起因するか」に対応付けて提示する。
-* **章ごとの機密分離と `--root` スコープの限界**: `--root` はドキュメントルート外への到達を防ぐが、同一ドキュメント内の他章（機密レベルの異なるファイル）への `read()` は防げない。将来的に各章を独立コンパイルしPDF結合でマージするアーキテクチャへ移行可能であることを前提としておく。
-* **ビルドログのCI連係（構造化ログ）**: 警告・エラーを GitHub Actions の `::warning file=...,line=...::` 形式で出力し、Pull Request 上に直接アノテーション表示させる。
-* **`--watch`（保存即再生成）**: スライド調整時の試行回数を減らすオプション機能。
