@@ -3,7 +3,7 @@
 ## 1. 目的
 AIが生成し、人間が加筆・修正するテキストファイルを、1つ1つ独立した「コンテキスト」として扱うツールである。複数のコンテキストを、人間の手作業によるレイアウト調整なしに、1つの人間可読なPDF文書へ決定論的に組み上げる（compose）。これにより「Document as Code」の概念と「AIからのデザイン権限の剥奪」を実証する。
 
-コンテキストとなるテキストファイルはMarkdownに限らない。プレーンテキスト、コードコメント、YAML、JSON、CSVなど、あらゆるテキストファイルが対象になり得る。`chapters`のファイルは拡張子で扱いが分かれる： `.md`/`.markdown`はMarkdownとして変換し（7章）、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にする。いずれもMarkdown以外の拡張子ではmarkdown-itを一切通さないため、行頭の`#`や`-`等がMarkdown構文として誤解釈されることはない（[#15](https://github.com/tokudiro/context-compositor/issues/15)）。CSVを表として構造化する変換は未実装（[#36](https://github.com/tokudiro/context-compositor/issues/36)）。HTMLを入力フォーマットとして本格対応することは検討のうえ見送った（8章）。
+コンテキストとなるテキストファイルはMarkdownに限らない。プレーンテキスト、コードコメント、YAML、JSON、CSVなど、あらゆるテキストファイルが対象になり得る。`chapters`のファイルは拡張子で扱いが分かれる： `.md`/`.markdown`はMarkdownとして変換し（7章）、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、`.dot`/`.gv`/`.mmd`/`.puml`/`.plantuml`/`.pu`は図表ソースファイルとして1章分描画し（11章、[#53](https://github.com/tokudiro/context-compositor/issues/53)）、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にする。いずれもMarkdown以外の拡張子ではmarkdown-itを一切通さないため、行頭の`#`や`-`等がMarkdown構文として誤解釈されることはない（[#15](https://github.com/tokudiro/context-compositor/issues/15)）。CSVを表として構造化する変換は未実装（[#36](https://github.com/tokudiro/context-compositor/issues/36)）。HTMLを入力フォーマットとして本格対応することは検討のうえ見送った（8章）。
 
 もう1つの要件は「書いている場所で、そのままPDFにできること」。ドキュメントの置き場所をツールの都合に合わせさせない。
 
@@ -158,6 +158,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
    * **実装**: Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、UMD形式、全図種込み。実測約3.4MB）を`tool_dir/.mermaid-cache/`へバージョン・SHA256を固定してダウンロード・キャッシュし（9章）、Playwright（Python版）の`connect_over_cdp()`でシステムブラウザにCDP接続してブラウザ内で`mermaid.render()`を直接呼び出す（`mermaid-cli`丸ごとの導入は不要、Node.js自体が不要になった）。1回のビルドでヘッドレスブラウザ・ページは1つだけ起動し、複数のMermaid図で使い回す。コンテンツのSHA256ハッシュをキー名として `project_dir/.context-compositor/cache/` にSVG結果をキャッシュする。mermaid既定のHTMLラベル（`<foreignObject>`）はTypstのraw SVGレンダラーが描画できないため、`flowchart.htmlLabels`とトップレベルの`htmlLabels`両方を`false`に指定し通常のSVG `<text>` 要素で出力する（トップレベルのみでは効かないことを実測で確認済み）。
    * **図とテキストのレイアウト**: `::: layout-right ... :::`（テキスト左・mermaid図右の2カラム）、`::: layout-compare ... :::`（2つのmermaid図を左右に並べる）という独自のMarkdown拡張記法を用意した。ASTの通常フローに入る前の生テキスト段階で正規表現により切り出し、個別にTypstの`grid`へ変換している。横長の図をlayout-compareで並べると縮小されすぎて読めなくなることを実測で確認済み。正方形に近い図でのみ使うこと。
    * **画像サイズの自動調整**: `templates/slide.typ` の `fit-image()` が幅・高さそれぞれの縮小率を計算し、小さい方を採用する。高さの上限は固定値`MAX_IMG_HEIGHT`（現在12cm）。Typstの`layout()`が返す`size`は「ページの残りスペース」ではなく「コンテナ全体のサイズ」で、見出しや本文が使った分を考慮できないため、動的計算ではなく安全側の固定値にしている。
+4. **図表ソースファイルの直接指定**（[#53](https://github.com/tokudiro/context-compositor/issues/53)）: Graphviz・Mermaid・PlantUMLの図表ソースファイルそのものを`chapters`に直接指定できる（`.dot`/`.gv`→Graphviz、`.mmd`→Mermaid、`.puml`/`.plantuml`/`.pu`→PlantUML。`.iuml`は`!include`で取り込む断片ファイル用の慣習であり単体の図として使われないため対象外）。**（実装済み）** 新しい描画ロジックは書かず、上記1〜3の既存の描画機構（Graphvizはテンプレート側の`show raw.where(lang: "dot")`、Mermaid/PlantUMLは`_render_mermaid()`/`_render_plantuml()`）をそのまま呼び出すだけで実現している。1ファイル＝1章（見出しなし、図だけのページ）として扱われ、`plugins.*`の有効・無効判定もそれぞれの既存ロジックがそのまま適用される。
 
 ## 12. ビルド成果物と一時ファイル
 * 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートは同じ `.context-compositor/_template.typ` へコピーしてから参照する（5章・8章のサンドボックス要件）。画像はコピーせず、`--root` 起点のルート絶対パス（`/...`）で参照して解決する。

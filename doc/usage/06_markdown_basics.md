@@ -8,9 +8,14 @@
 | --- | --- |
 | `.md` / `.markdown` | Markdownとして変換（このガイドで説明する記法がすべて使える） |
 | `.yaml` / `.yml` / `.json` | シンタックスハイライト付きの等幅表示（そのまま） |
+| `.dot` / `.gv` | Graphviz図として1章分描画（`plugins.graphviz`） |
+| `.mmd` | Mermaid図として1章分描画（`plugins.mermaid`） |
+| `.puml` / `.plantuml` / `.pu` | PlantUML図として1章分描画（`plugins.plantuml`） |
 | それ以外（`.txt`、コードファイル等） | 素の等幅表示（そのまま。インデント・改行を保持） |
 
 `.md`/`.markdown` 以外はMarkdownとして解釈されないため、YAML内の `-` やコード内の `#` が見出しやリストに化けることはありません。
+
+図表ソースファイル（`.dot`/`.mmd`/`.puml`等）は、Markdown内の```` ```mermaid ````等のフェンスコードブロックと全く同じ描画機構を使います。1ファイル＝1章（見出しなし、図だけのページ）として扱われ、該当する`plugins.*`が無効な場合は素のコード表示にフォールバックします（[#53](https://github.com/tokudiro/context-compositor/issues/53)）。「図表（Mermaid / Graphviz / PlantUML）」の章も参照してください。
 
 ## 対応するMarkdown記法のスコープ
 

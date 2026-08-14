@@ -200,6 +200,16 @@ class TypstRenderer:
     # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
     STRUCTURED_TEXT_LANGS = {'.yaml': 'yaml', '.yml': 'yaml', '.json': 'json'}
 
+    # 図表ソースファイルそのものをchaptersに直接指定できる拡張子（#53）。Markdown内の
+    # フェンスコードブロックと同じ描画機構をそのまま流用する（新しい描画ロジックは書かない）。
+    # .iumlはPlantUMLの!includeで取り込む断片ファイル用の慣習であり、単体の図として
+    # 使われないため対象外。
+    DIAGRAM_FILE_EXTS = {
+        '.dot': 'graphviz', '.gv': 'graphviz',
+        '.mmd': 'mermaid',
+        '.puml': 'plantuml', '.plantuml': 'plantuml', '.pu': 'plantuml',
+    }
+
     def render_chapter(self, text, filepath="", drop_leading_title=False):
         """chaptersの1ファイルを拡張子に応じて変換する（1章、#15）。
         .md/.markdown以外はmarkdown-itに一切通さない。素のテキストやYAML/JSON中の
@@ -211,6 +221,15 @@ class TypstRenderer:
         self.current_file = filepath
         self.current_dir = os.path.dirname(os.path.abspath(filepath)) if filepath else self.base_dir
         self.front_matter = {}
+
+        diagram_kind = self.DIAGRAM_FILE_EXTS.get(ext)
+        if diagram_kind == 'graphviz':
+            return self._render_raw_text(text, 'dot')
+        elif diagram_kind == 'mermaid':
+            return self._render_mermaid(text)
+        elif diagram_kind == 'plantuml':
+            return self._render_plantuml(text)
+
         return self._render_raw_text(text, self.STRUCTURED_TEXT_LANGS.get(ext))
 
     def _render_raw_text(self, text, lang=None):
@@ -729,7 +748,11 @@ class TypstRenderer:
             elif t.type == 's_close':
                 res.append(']')
             elif t.type == 'code_inline':
-                res.append(f'`{t.content}`')
+                # `` `text` ``のように直接バッククォートで組み立てると、text自体にバッククォートが
+                # 含まれる場合（例: 4バッククォートのインラインコードスパンの中身が```を含む）に
+                # Typst側のraw構文が早期に閉じて壊れる。文字列リテラルとして渡すraw()なら安全
+                # （#15の_render_raw_text・フェンスのelse分岐と同じ理由。実測で発覚したバグ）。
+                res.append(f'#raw("{escape_string_literal(t.content)}")')
             elif t.type in ['softbreak', 'hardbreak']:
                 res.append('#linebreak()\n')
             elif t.type == 'image':
