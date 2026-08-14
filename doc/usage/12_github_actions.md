@@ -58,7 +58,7 @@ jobs:
       - name: Checkout context-compositor (tool)
         uses: actions/checkout@v4
         with:
-          repository: <owner>/context-compositor
+          repository: tokudiro/context-compositor
           path: context-compositor
 
       - uses: actions/setup-python@v5
@@ -77,7 +77,7 @@ jobs:
           path: this-repo/path/to/output.pdf
 ```
 
-`this-repo`側にはドキュメント原稿と`context-compositor.config.yaml`だけを置けばよく、`build.py`本体やそのライセンス・バージョン管理を各ドキュメントリポジトリ側で意識する必要がない。context-compositorが公開リポジトリであれば、`repository:`に指定するだけで追加の認証設定なしにチェックアウトできる。
+`this-repo`側にはドキュメント原稿と`context-compositor.config.yaml`だけを置けばよく、`build.py`本体やそのライセンス・バージョン管理を各ドキュメントリポジトリ側で意識する必要がない。context-compositorは公開リポジトリなので、`repository: tokudiro/context-compositor`と指定するだけで追加の認証設定（トークン等）なしにチェックアウトできる。
 
 ## Mermaidを使う場合の注意
 
