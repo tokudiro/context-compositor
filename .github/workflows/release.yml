@@ -1,0 +1,36 @@
+name: Release
+
+# バージョンタグ（v*）をpushすると、使い方ガイド（doc/usage/）をこのツール自身でPDF化し、
+# そのタグのGitHub Releaseにアセットとして添付する（dogfooding、#31・#24）。
+# doc/usage/context-compositor.config.yaml は graphviz/mermaid とも無効なため、
+# Node.js/JRE等の追加ランタイムは不要でPython + pipのみで完結する（2章）。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-usage-guide:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build usage guide PDF
+        run: |
+          cd doc/usage
+          python ../../build.py
+
+      - name: Attach PDF to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: doc/usage/usage.pdf
