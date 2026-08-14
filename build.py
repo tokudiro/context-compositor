@@ -648,15 +648,8 @@ def parse_args():
     parser.add_argument("--config", help="設定ファイル(yaml/json)へのパス。省略時はカレントディレクトリの context-compositor.config.yaml/.json を探す。")
     return parser.parse_args()
 
-def build():
-    tool_dir = os.path.dirname(os.path.abspath(__file__))
-    args = parse_args()
-
-    font_dir = ensure_fonts(tool_dir)
-
-    # 汎用ツールとして、呼び出し元プロジェクトが持つ設定ファイルを指定できるようにする。
-    # inputs.dir/output.dir などプロジェクト固有の相対パスは、このconfigファイルの
-    # 置き場所(project_dir)を基準に解決する。templates/等ツール自身のリソースはtool_dir基準のまま。
+def _load_project_config(args):
+    """--configまたはカレントディレクトリから設定ファイルを読み込み、(project_dir, config, chapters)を返す。"""
     if args.config:
         config_path = os.path.abspath(args.config)
     else:
@@ -672,15 +665,10 @@ def build():
     if not chapters:
         print("[Error] No chapters configured in config.yaml. Aborting.")
         sys.exit(1)
+    return project_dir, config, chapters
 
-    # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
-    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは未実装のため既定で無効）。
-    plugins_config = config.get("plugins") or {}
-    graphviz_enabled = bool(plugins_config.get("graphviz", True))
-    mermaid_enabled = bool(plugins_config.get("mermaid", True))
-    if plugins_config.get("plantuml", False):
-        print("[Warning] plugins.plantuml is enabled, but PlantUML rendering is not implemented yet; ```plantuml fences will be left as plain code.")
-
+def _resolve_project_dirs(project_dir, config):
+    """出力先・入力元・作業ディレクトリと、それらを跨ぐ--root（typst_root）を解決する。"""
     outputs_dir = os.path.normpath(os.path.join(project_dir, config["output"]["dir"]))
     os.makedirs(outputs_dir, exist_ok=True)
     # 【修正】ハードコードをやめ config の inputs.dir を実際に使用する
@@ -689,10 +677,15 @@ def build():
     work_dir = os.path.join(project_dir, ".context-compositor")
     os.makedirs(work_dir, exist_ok=True)
 
-    # 【修正】8章のセキュリティ要件（ツール本体のディレクトリを--rootにしない）を満たすため、
-    # tool_dirは--rootに含めない。テンプレートは元の置き場所（tool_dir配下 or project_dir配下）に
-    # 関わらず#importでの参照が必要なため、work_dir（project_dir配下、--rootの内側）へコピーして
-    # から、コピーの方を参照する。
+    # project_dir・inputs_dir・outputs_dir・work_dirすべてを跨いでtypstから参照できるよう、
+    # それら全ての共通の親ディレクトリを --root にする（tool_dirは含めない）
+    typst_root = os.path.commonpath([project_dir, inputs_dir, outputs_dir, work_dir])
+    return outputs_dir, inputs_dir, work_dir, typst_root
+
+def _prepare_template(config, tool_dir, project_dir, work_dir, typst_root):
+    """template.pathを解決してwork_dir配下へコピーし、(コピー先の絶対パス, --root起点の
+    ルート絶対パス文字列)を返す。8章のセキュリティ要件（tool_dirを--rootにしない）を満たす
+    ため、テンプレートは元の置き場所に関わらずwork_dir（--rootの内側）へコピーしてから参照する。"""
     template_abs_path = resolve_template_path(config["template"]["path"], tool_dir, project_dir)
     if not os.path.exists(template_abs_path):
         print(f"[Error] Template not found: {template_abs_path}")
@@ -700,15 +693,15 @@ def build():
     template_copy_path = os.path.join(work_dir, "_template" + os.path.splitext(template_abs_path)[1])
     shutil.copyfile(template_abs_path, template_copy_path)
 
-    # project_dir・inputs_dir・outputs_dir・work_dirすべてを跨いでtypstから参照できるよう、
-    # それら全ての共通の親ディレクトリを --root にする（tool_dirは含めない）
-    typst_root = os.path.commonpath([project_dir, inputs_dir, outputs_dir, work_dir])
-
-    doc_config = config.get("document", {})
     # 生成コード(temp_build.typ)の実際の置き場所に依存させないよう、typst_root起点の
     # ルート絶対パスに変換する（.context-compositor/等サブディレクトリに置いても解決できる）。
-    template_path = "/" + os.path.relpath(template_copy_path, typst_root).replace(os.sep, '/')
-    
+    template_root_rel_path = "/" + os.path.relpath(template_copy_path, typst_root).replace(os.sep, '/')
+    return template_copy_path, template_root_rel_path
+
+def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
+    """document:設定からtypst_codeの冒頭（テンプレートのimportとconf()呼び出し）を組み立てる。
+    戻り値は (preamble文字列, doc_config, global_landscape, global_paper, cover_mode)。"""
+    doc_config = config.get("document", {})
     global_landscape = str(doc_config.get('landscape', False)).lower() == 'true'
     global_paper = doc_config.get('paper_size', 'a4')
 
@@ -740,8 +733,8 @@ def build():
     safe_author = escape_string_literal(doc_config.get('author', ''))
     safe_date = escape_string_literal(date_str)
 
-    typst_code = f"""
-#import "{template_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta, cc-marp-header, cc-marp-footer, cc-marp-paginate
+    preamble = f"""
+#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta, cc-marp-header, cc-marp-footer, cc-marp-paginate
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",
@@ -754,135 +747,136 @@ def build():
 )
 
 """
+    return preamble, doc_config, global_landscape, global_paper, cover_mode
 
-    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled)
+def _parse_chapter_entry(ch):
+    """chaptersの1エントリを解析し、(ファイル/ディレクトリ名, 章固有設定のdict, 種別)を返す。
+    種別は"file"（Markdown等の通常章）または"aggregate"（YAML/JSON集約）。"""
+    if isinstance(ch, str):
+        return ch, {}, "file"
+    if not isinstance(ch, dict):
+        print(f"[Error] Invalid chapter entry (must be a string or a mapping): {ch!r}")
+        sys.exit(1)
+    if "aggregate" in ch:
+        ch_file = ch["aggregate"]
+        ch_type = "aggregate"
+    else:
+        ch_file = ch.get("file")
+        ch_type = "file"
+    if not ch_file:
+        print(f"[Error] Invalid chapter entry (no 'file' or 'aggregate' key): {ch!r}")
+        sys.exit(1)
+    return ch_file, ch, ch_type
 
-    current_landscape = global_landscape
-    current_paper = global_paper
-    is_first_chapter = True
+def _render_aggregate_chapter(ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper, global_landscape, global_paper):
+    """aggregate: チャプター（YAML/JSONファイル群のテーブル集約）をTypstへ変換する。
+    aggregateはYAML/JSONのテストケース集約であり、front-matter（Markdown固有の概念）は関係しない。
+    戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper)。"""
+    typst_code = ""
+    ch_landscape = str(ch_dict.get("landscape", global_landscape)).lower() == 'true'
+    ch_paper = ch_dict.get("paper_size", global_paper)
+    if ch_landscape != current_landscape or ch_paper != current_paper:
+        typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
+        current_landscape = ch_landscape
+        current_paper = ch_paper
 
-    for ch in chapters:
-        if isinstance(ch, str):
-            ch_file = ch
-            ch_dict = {}
-            ch_type = "file"
-        elif not isinstance(ch, dict):
-            print(f"[Error] Invalid chapter entry (must be a string or a mapping): {ch!r}")
-            sys.exit(1)
-        elif "aggregate" in ch:
-            ch_file = ch["aggregate"]
-            ch_dict = ch
-            ch_type = "aggregate"
-        else:
-            ch_file = ch.get("file")
-            ch_dict = ch
-            ch_type = "file"
+    agg_path = os.path.join(inputs_dir, ch_file)
+    typst_code += f'= {renderer.escape_typst(ch_dict.get("title", "Test Cases"))}\n\n'
 
-        if not ch_file:
-            print(f"[Error] Invalid chapter entry (no 'file' or 'aggregate' key): {ch!r}")
-            sys.exit(1)
+    if os.path.exists(agg_path) and os.path.isdir(agg_path):
+        # 【修正】YAMLだけでなくJSONファイルも読み込み対象に含める
+        tc_files = sorted([f for f in os.listdir(agg_path) if f.endswith(('.yaml', '.yml', '.json'))])
 
-        if ch_type == "aggregate":
-            # aggregateはYAML/JSONのテストケース集約であり、front-matter（Markdown固有の概念）は関係しない
-            ch_landscape = str(ch_dict.get("landscape", global_landscape)).lower() == 'true'
-            ch_paper = ch_dict.get("paper_size", global_paper)
-            if ch_landscape != current_landscape or ch_paper != current_paper:
-                typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
-                current_landscape = ch_landscape
-                current_paper = ch_paper
+        typst_code += '#table(\n  columns: (auto, auto, auto, 1fr, 1fr),\n'
+        typst_code += '  align: (center, left, center, left, left),\n'
+        typst_code += '  stroke: 0.5pt + luma(150),\n'
+        typst_code += '  fill: (col, row) => if row == 0 { luma(240) } else { none },\n'
+        typst_code += '  [*ID*], [*Title*], [*Priority*], [*Steps*], [*Expected*],\n'
 
-            agg_path = os.path.join(inputs_dir, ch_file)
-            typst_code += f'= {renderer.escape_typst(ch_dict.get("title", "Test Cases"))}\n\n'
+        for tc_file in tc_files:
+            tc_path = os.path.join(agg_path, tc_file)
+            with open(tc_path, "r", encoding="utf-8") as f:
+                try:
+                    if tc_file.endswith('.json'):
+                        tc_data = json.load(f) or {}
+                    else:
+                        tc_data = yaml.safe_load(f) or {}
+                except Exception as e:
+                    print(f"[Warning] Failed to parse {tc_file}: {e}")
+                    continue
 
-            if os.path.exists(agg_path) and os.path.isdir(agg_path):
-                # 【修正】YAMLだけでなくJSONファイルも読み込み対象に含める
-                tc_files = sorted([f for f in os.listdir(agg_path) if f.endswith(('.yaml', '.yml', '.json'))])
-                
-                typst_code += '#table(\n  columns: (auto, auto, auto, 1fr, 1fr),\n'
-                typst_code += '  align: (center, left, center, left, left),\n'
-                typst_code += '  stroke: 0.5pt + luma(150),\n'
-                typst_code += '  fill: (col, row) => if row == 0 { luma(240) } else { none },\n'
-                typst_code += '  [*ID*], [*Title*], [*Priority*], [*Steps*], [*Expected*],\n'
-                
-                for tc_file in tc_files:
-                    tc_path = os.path.join(agg_path, tc_file)
-                    with open(tc_path, "r", encoding="utf-8") as f:
-                        try:
-                            if tc_file.endswith('.json'):
-                                tc_data = json.load(f) or {}
-                            else:
-                                tc_data = yaml.safe_load(f) or {}
-                        except Exception as e:
-                            print(f"[Warning] Failed to parse {tc_file}: {e}")
-                            continue
-                            
-                    tc_id = renderer.escape_typst(str(tc_data.get("id", "")))
-                    tc_title = renderer.escape_typst(str(tc_data.get("title", "")))
-                    tc_priority = renderer.escape_typst(str(tc_data.get("priority", "")))
-                    
-                    # 【修正】YAMLでリスト形式で書かれていた場合も結合して安全に処理する
-                    steps_md = extract_md_string(tc_data, "steps")
-                    expected_md = extract_md_string(tc_data, "expected")
-                    steps_typst = renderer.render(steps_md, filepath=tc_path).strip()
-                    expected_typst = renderer.render(expected_md, filepath=tc_path).strip()
-                    
-                    typst_code += f'  [{tc_id}], [{tc_title}], [{tc_priority}], [{steps_typst}], [{expected_typst}],\n'
-                
-                typst_code += ')\n\n#pagebreak(weak: true)\n'
-            else:
-                # 仕様9章: 入力欠損は黙って飛ばさず即エラー (Fail-fast)
-                print(f"[Error] Aggregate directory not found: {agg_path}")
-                sys.exit(1)
+            tc_id = renderer.escape_typst(str(tc_data.get("id", "")))
+            tc_title = renderer.escape_typst(str(tc_data.get("title", "")))
+            tc_priority = renderer.escape_typst(str(tc_data.get("priority", "")))
 
-        else:
-            md_path = os.path.join(inputs_dir, ch_file)
-            if os.path.exists(md_path):
-                with open(md_path, "r", encoding="utf-8") as f:
-                    md_text = f.read()
-                chapter_typst = renderer.render_chapter(
-                    md_text, filepath=md_path,
-                    drop_leading_title=is_first_chapter and cover_mode in ('replace', 'none'))
-                front_matter = renderer.front_matter
+            # 【修正】YAMLでリスト形式で書かれていた場合も結合して安全に処理する
+            steps_md = extract_md_string(tc_data, "steps")
+            expected_md = extract_md_string(tc_data, "expected")
+            steps_typst = renderer.render(steps_md, filepath=tc_path).strip()
+            expected_typst = renderer.render(expected_md, filepath=tc_path).strip()
 
-                # front-matterのpaper_size/landscapeは、config.yamlのチャプター個別設定より弱い
-                # 優先順位で適用する（7章、#17）。config.yaml側に明示指定が無い場合のみ使う。
-                # front-matterはファイルを読んで初めてわかるため、#set pageの要否判定もここで行う
-                # （aggregateには front-matter の概念が無く、判定をchapters読み込み前に済ませられる）。
-                ch_landscape = str(ch_dict.get("landscape", front_matter.get("landscape", global_landscape))).lower() == 'true'
-                ch_paper = ch_dict.get("paper_size", front_matter.get("paper_size", global_paper))
-                if ch_landscape != current_landscape or ch_paper != current_paper:
-                    typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
-                    current_landscape = ch_landscape
-                    current_paper = ch_paper
+            typst_code += f'  [{tc_id}], [{tc_title}], [{tc_priority}], [{steps_typst}], [{expected_typst}],\n'
 
-                font_size = front_matter.get('font_size')
-                if font_size:
-                    # スコープを#[...]で閉じ、このチャプターだけにフォントサイズ指定を適用する
-                    chapter_typst = f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
+        typst_code += ')\n\n#pagebreak(weak: true)\n'
+    else:
+        # 仕様9章: 入力欠損は黙って飛ばさず即エラー (Fail-fast)
+        print(f"[Error] Aggregate directory not found: {agg_path}")
+        sys.exit(1)
 
-                # front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して
-                # chapter-meta()経由で渡す（7章、#38）。文書全体の表紙はconfig.yaml側のみが正であり、
-                # front-matterはここでは一切影響しない。表示するかどうか（ヘッダー上書き・バイライン等）
-                # はテンプレート側の裁量（既定の2テンプレートは何もしない。templates/template_with_chapter_meta.typ
-                # が実装例）。titleは常に有効な値（front-matter優先、無ければ文書全体のtitle）を渡す
-                # （本文ページのヘッダーは常に何かを表示するものであり、noneにする理由が無いため）。
-                # subtitle/author/dateはfront-matterに無ければnoneのまま渡し、その章だけ何も表示させない。
-                effective_title = front_matter.get('title') or doc_config.get('title', 'Untitled')
-                meta_parts = [f'title: "{escape_string_literal(str(effective_title))}"']
-                for key in ('subtitle', 'author', 'date'):
-                    value = front_matter.get(key)
-                    meta_parts.append(f'{key}: "{escape_string_literal(str(value))}"' if value else f'{key}: none')
-                typst_code += f"#chapter-meta({', '.join(meta_parts)})[\n{chapter_typst}\n]\n"
-                typst_code += "\n#pagebreak(weak: true)\n"
-            else:
-                print(f"[Error] Chapter file not found: {md_path}")
-                sys.exit(1)
+    return typst_code, current_landscape, current_paper
 
-        is_first_chapter = False
-            
-    if current_landscape != global_landscape or current_paper != global_paper:
-         typst_code += f'#set page(paper: "{global_paper}", flipped: {str(global_landscape).lower()})\n'
+def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
+                              global_landscape, global_paper, is_first_chapter, cover_mode):
+    """通常のチャプター（Markdown/YAML/JSON/プレーンテキスト等、#15の拡張子ディスパッチ対象）を
+    Typstへ変換する。戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper)。"""
+    md_path = os.path.join(inputs_dir, ch_file)
+    if not os.path.exists(md_path):
+        print(f"[Error] Chapter file not found: {md_path}")
+        sys.exit(1)
 
+    with open(md_path, "r", encoding="utf-8") as f:
+        md_text = f.read()
+    chapter_typst = renderer.render_chapter(
+        md_text, filepath=md_path,
+        drop_leading_title=is_first_chapter and cover_mode in ('replace', 'none'))
+    front_matter = renderer.front_matter
+
+    # front-matterのpaper_size/landscapeは、config.yamlのチャプター個別設定より弱い
+    # 優先順位で適用する（7章、#17）。config.yaml側に明示指定が無い場合のみ使う。
+    # front-matterはファイルを読んで初めてわかるため、#set pageの要否判定もここで行う
+    # （aggregateには front-matter の概念が無く、判定をchapters読み込み前に済ませられる）。
+    ch_landscape = str(ch_dict.get("landscape", front_matter.get("landscape", global_landscape))).lower() == 'true'
+    ch_paper = ch_dict.get("paper_size", front_matter.get("paper_size", global_paper))
+    typst_code = ""
+    if ch_landscape != current_landscape or ch_paper != current_paper:
+        typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
+        current_landscape = ch_landscape
+        current_paper = ch_paper
+
+    font_size = front_matter.get('font_size')
+    if font_size:
+        # スコープを#[...]で閉じ、このチャプターだけにフォントサイズ指定を適用する
+        chapter_typst = f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
+
+    # front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して
+    # chapter-meta()経由で渡す（7章、#38）。文書全体の表紙はconfig.yaml側のみが正であり、
+    # front-matterはここでは一切影響しない。表示するかどうか（ヘッダー上書き・バイライン等）
+    # はテンプレート側の裁量（既定の2テンプレートは何もしない。templates/template_with_chapter_meta.typ
+    # が実装例）。titleは常に有効な値（front-matter優先、無ければ文書全体のtitle）を渡す
+    # （本文ページのヘッダーは常に何かを表示するものであり、noneにする理由が無いため）。
+    # subtitle/author/dateはfront-matterに無ければnoneのまま渡し、その章だけ何も表示させない。
+    effective_title = front_matter.get('title') or doc_config.get('title', 'Untitled')
+    meta_parts = [f'title: "{escape_string_literal(str(effective_title))}"']
+    for key in ('subtitle', 'author', 'date'):
+        value = front_matter.get(key)
+        meta_parts.append(f'{key}: "{escape_string_literal(str(value))}"' if value else f'{key}: none')
+    typst_code += f"#chapter-meta({', '.join(meta_parts)})[\n{chapter_typst}\n]\n"
+    typst_code += "\n#pagebreak(weak: true)\n"
+
+    return typst_code, current_landscape, current_paper
+
+def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path):
+    """temp_build.typへ書き出してtypstコンパイルし、成功時は使い捨ての中間ファイルを削除する。"""
     temp_typ_path = os.path.join(work_dir, "temp_build.typ")
     with open(temp_typ_path, "w", encoding="utf-8") as f:
         f.write(typst_code)
@@ -904,6 +898,51 @@ def build():
     # 失敗時は温存し、生成されたTypstコードをそのままデバッグに使えるようにする。
     os.remove(temp_typ_path)
     os.remove(template_copy_path)
+
+def build():
+    tool_dir = os.path.dirname(os.path.abspath(__file__))
+    args = parse_args()
+    font_dir = ensure_fonts(tool_dir)
+
+    # 汎用ツールとして、呼び出し元プロジェクトが持つ設定ファイルを指定できるようにする。
+    # inputs.dir/output.dir などプロジェクト固有の相対パスは、このconfigファイルの
+    # 置き場所(project_dir)を基準に解決する。templates/等ツール自身のリソースはtool_dir基準のまま。
+    project_dir, config, chapters = _load_project_config(args)
+
+    # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
+    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは未実装のため既定で無効）。
+    plugins_config = config.get("plugins") or {}
+    graphviz_enabled = bool(plugins_config.get("graphviz", True))
+    mermaid_enabled = bool(plugins_config.get("mermaid", True))
+    if plugins_config.get("plantuml", False):
+        print("[Warning] plugins.plantuml is enabled, but PlantUML rendering is not implemented yet; ```plantuml fences will be left as plain code.")
+
+    outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
+    template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
+
+    typst_code, doc_config, global_landscape, global_paper, cover_mode = _build_document_preamble(
+        config, template_root_rel_path, graphviz_enabled)
+
+    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled)
+    current_landscape, current_paper = global_landscape, global_paper
+    is_first_chapter = True
+
+    for ch in chapters:
+        ch_file, ch_dict, ch_type = _parse_chapter_entry(ch)
+        if ch_type == "aggregate":
+            fragment, current_landscape, current_paper = _render_aggregate_chapter(
+                ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper, global_landscape, global_paper)
+        else:
+            fragment, current_landscape, current_paper = _render_markdown_chapter(
+                ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
+                global_landscape, global_paper, is_first_chapter, cover_mode)
+        typst_code += fragment
+        is_first_chapter = False
+
+    if current_landscape != global_landscape or current_paper != global_paper:
+        typst_code += f'#set page(paper: "{global_paper}", flipped: {str(global_landscape).lower()})\n'
+
+    _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path)
 
 if __name__ == "__main__":
     build()
