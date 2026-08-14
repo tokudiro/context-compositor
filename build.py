@@ -20,6 +20,47 @@ try:
 except ImportError:
     yaml = None
 
+# ローカル環境やGitHub Actionsランナー(ubuntu-latest)に標準搭載されているChrome/Edgeの
+# インストール先候補。見つかればPUPPETEER_EXECUTABLE_PATHに指定し、Puppeteerによる
+# Chromiumの自動ダウンロード（実測699MB。#34）を回避する（仕様書11章）。
+SYSTEM_BROWSER_PATHS = {
+    "win32": [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    ],
+    "darwin": [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ],
+    "linux": [
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/usr/bin/microsoft-edge",
+        "/usr/bin/microsoft-edge-stable",
+    ],
+}
+SYSTEM_BROWSER_COMMANDS = [
+    "google-chrome", "google-chrome-stable", "chromium-browser", "chromium",
+    "msedge", "microsoft-edge", "microsoft-edge-stable",
+]
+
+def find_system_browser():
+    """既存のChrome/Edgeの実行ファイルパスを探す。見つからなければNone。"""
+    platform_key = "darwin" if sys.platform == "darwin" else ("linux" if sys.platform.startswith("linux") else "win32")
+    for path in SYSTEM_BROWSER_PATHS.get(platform_key, []):
+        if os.path.exists(path):
+            return path
+    for cmd in SYSTEM_BROWSER_COMMANDS:
+        found = shutil.which(cmd)
+        if found:
+            return found
+    return None
+
 class TypstRenderer:
     """
     markdown-it-py が生成したAST（構文木）を走査し、
@@ -282,7 +323,9 @@ class TypstRenderer:
     def _render_mermaid(self, code):
         """mermaidブロックをmmdc(@mermaid-js/mermaid-cli)でSVG化し、Typstのimage呼び出しに変換する。
         外部APIへの通信は行わず、ローカルのmmdc/Puppeteerで完結させる（仕様書10章）。
-        PUPPETEER_EXECUTABLE_PATH 等のブラウザ指定は環境側(CI設定等)の責務とし、ここでは関知しない。"""
+        既存のChrome/Edgeが見つかればPUPPETEER_EXECUTABLE_PATHで明示指定し、Puppeteerによる
+        ブラウザの自動ダウンロードを回避する。見つからない場合のみ、フルChrome(約428MB)ではなく
+        軽量なchrome-headless-shell(約272MB)だけを取得するフォールバックへ切り替える（仕様書11章、#34）。"""
         cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
         os.makedirs(cache_dir, exist_ok=True)
         digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
@@ -302,12 +345,30 @@ class TypstRenderer:
             if not os.path.exists(mmdc_config_path):
                 with open(mmdc_config_path, "w", encoding="utf-8") as f:
                     json.dump({"flowchart": {"htmlLabels": False}, "htmlLabels": False}, f)
+
+            env = os.environ.copy()
+            puppeteer_args = []
+            browser_path = find_system_browser()
+            if browser_path:
+                # 本命: 既存ブラウザを再利用し、ダウンロードを完全にゼロにする
+                env["PUPPETEER_EXECUTABLE_PATH"] = browser_path
+                env["PUPPETEER_SKIP_DOWNLOAD"] = "true"
+                print(f"[Info] Reusing system browser for mermaid rendering: {browser_path}")
+            else:
+                # フォールバック: フルChromeは取得せず、軽量なchrome-headless-shellだけを使う
+                env["PUPPETEER_SKIP_CHROME_DOWNLOAD"] = "true"
+                puppeteer_config_path = os.path.join(cache_dir, "mmdc_puppeteer_config.json")
+                with open(puppeteer_config_path, "w", encoding="utf-8") as f:
+                    json.dump({"headless": "shell"}, f)
+                puppeteer_args = ["-p", puppeteer_config_path]
+                print("[Info] No system browser found; downloading chrome-headless-shell only (not full Chrome).")
+
             print(f"[Info] Rendering mermaid diagram via mmdc -> {os.path.basename(svg_path)}")
             result = subprocess.run(
                 [npx, "-y", "-p", "@mermaid-js/mermaid-cli", "mmdc",
                  "-i", mmd_path, "-o", svg_path, "-b", "transparent",
-                 "-c", mmdc_config_path],
-                capture_output=True, text=True)
+                 "-c", mmdc_config_path] + puppeteer_args,
+                capture_output=True, text=True, env=env)
             # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
             if result.returncode != 0 or not os.path.exists(svg_path):
                 print(f"[Error] mermaid rendering failed for {self.current_file}:\n{result.stderr}")
