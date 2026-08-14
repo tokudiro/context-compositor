@@ -18,6 +18,9 @@ from markdown_it import MarkdownIt
 # タスクリスト(- [ ]/- [x])はGFM拡張のためcommonmarkプリセットに含まれず、mdit-py-pluginsの
 # プラグインとして追加する（#48）。
 from mdit_py_plugins.tasklists import tasklists_plugin
+# 文字色指定（#46）。[text]{color=red}というPandoc由来のブラケット+属性記法をパースする
+# （spans=Trueでspan_open/span_closeトークンとして出力される。既定では無効なので明示的に有効化）。
+from mdit_py_plugins.attrs import attrs_plugin
 # PyPIの typst パッケージ(typst-py)はコンパイラ本体をプラットフォーム別ホイールに同梱しているため、
 # tools/typst.exe のような実行バイナリをリポジトリに持たずに済む（pipがOSごとに正しい版を入れてくれる）
 import typst as typst_lib
@@ -127,11 +130,19 @@ class TypstRenderer:
     # 中身を1文字以上必須にし、ネストした角括弧（通常の[link]記法との衝突）は対象外にする。
     WIKILINK_RE = re.compile(r'\[\[([^\[\]]+)\]\]')
 
+    # 文字色指定（#46）。<span style="color:...">は「閉じた許可リスト」への1パターン追加として
+    # 狭く特別扱いする（それ以外のHTMLタグは従来どおり非対応・警告のまま）。もう1つの記法
+    # （[text]{color=red}、Pandoc由来）はmdit_py_plugins.attrsのspan機能で処理する。
+    HTML_SPAN_COLOR_OPEN_RE = re.compile(r'^<span\s+style\s*=\s*["\']color\s*:\s*([^;"\']+?)\s*;?\s*["\']\s*>$', re.IGNORECASE)
+    HTML_SPAN_CLOSE_RE = re.compile(r'^</span\s*>$', re.IGNORECASE)
+
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
                  plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False, tool_dir=None):
         # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
         # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
-        self.md = MarkdownIt("commonmark").enable("table").enable("strikethrough").use(tasklists_plugin)
+        self.md = (MarkdownIt("commonmark").enable("table").enable("strikethrough")
+                   .use(tasklists_plugin)
+                   .use(attrs_plugin, spans=True, span_after="link", allowed=["color"]))
         self.list_stack = []
         self.current_file = ""
         self.current_dir = ""
@@ -691,6 +702,14 @@ class TypstRenderer:
     def render_inline(self, tokens):
         res = []
         at_line_start = True
+        # 文字色指定（#46）。<span style="color:...">はhtml_inlineの開き/閉じが独立したトークン
+        # として出てくるため、段落内でスタック管理して対応させる。閉じずに段落が終わった場合は
+        # 壊れたTypstコードを生成しないよう自動で閉じ、警告を出す。
+        html_span_depth = 0
+        # [text]{color=red}（attrs_pluginのspan_open/span_close）は既に開閉が対になった
+        # トークンとして出てくるため、各span_openが実際にラップを出力したかどうかだけ
+        # スタックで覚えておけばよい（span_close側は自分でattrsを持たないため）。
+        span_wrap_stack = []
         for t in tokens:
             if t.type == 'text':
                 if self.glossary_enabled and '[[' in t.content:
@@ -737,20 +756,46 @@ class TypstRenderer:
                 res.append(f'#link("{escape_string_literal(href)}")[')
             elif t.type == 'link_close':
                 res.append(']')
-            elif t.type == 'html_inline':
-                # tasklists_pluginはチェックボックスを生HTML(<input class="task-list-item-checkbox" ...>)
-                # として出力する。#46で決めた「閉じた許可リスト」の考え方に沿い、このパターンだけを
-                # 認識してUnicodeのチェックボックス記号に変換する（#48）。それ以外のHTMLは従来どおり警告。
-                checkbox = self._task_checkbox_glyph(t.content)
-                if checkbox is not None:
-                    res.append(checkbox)
+            elif t.type == 'span_open':
+                # [text]{color=red}（#46）。attrs_pluginにallowed=["color"]を指定しているため、
+                # color以外の属性は既にパース段階で取り除かれている。colorが無ければ何もラップしない。
+                color = dict(t.attrs).get('color')
+                if color:
+                    res.append(f'#text(fill: {self._color_to_typst(color)})[')
+                    span_wrap_stack.append(True)
                 else:
-                    self._warn_html(t)
+                    span_wrap_stack.append(False)
+            elif t.type == 'span_close':
+                if span_wrap_stack and span_wrap_stack.pop():
+                    res.append(']')
+            elif t.type == 'html_inline':
+                content = t.content.strip()
+                span_color_match = self.HTML_SPAN_COLOR_OPEN_RE.match(content)
+                # tasklists_pluginはチェックボックスを生HTML(<input class="task-list-item-checkbox" ...>)
+                # として出力する。<span style="color:...">とあわせ、#46で決めた「閉じた許可リスト」の
+                # 考え方に沿い、このパターンだけを特別扱いする（#48）。それ以外のHTMLは従来どおり警告。
+                if span_color_match:
+                    color = span_color_match.group(1).strip()
+                    res.append(f'#text(fill: {self._color_to_typst(color)})[')
+                    html_span_depth += 1
+                elif self.HTML_SPAN_CLOSE_RE.match(content) and html_span_depth > 0:
+                    res.append(']')
+                    html_span_depth -= 1
+                else:
+                    checkbox = self._task_checkbox_glyph(t.content)
+                    if checkbox is not None:
+                        res.append(checkbox)
+                    else:
+                        self._warn_html(t)
             else:
                 line_no = t.map[0] + 1 if t.map else '?'
                 print(f"[Warning] Unhandled inline token '{t.type}' at {self.current_file}:{line_no}")
             # 改行直後のテキストのみ行頭エスケープの対象にする
             at_line_start = t.type in ['softbreak', 'hardbreak']
+        if html_span_depth > 0:
+            # 壊れたTypstコード（閉じ角括弧の不足）を生成しないよう自動で閉じ、書き忘れに気付けるよう警告する
+            print(f"[Warning] Unclosed <span style=\"color:...\"> in {self.current_file}; closing it automatically.")
+            res.append(']' * html_span_depth)
         return "".join(res)
         
     def _count_table_cols(self, tokens, start_idx):
@@ -762,9 +807,20 @@ class TypstRenderer:
                 break
         return max(1, cols)
 
+    # 単純な英数字+ハイフンの識別子（例: "red"）のみ、Typstの色定数名として安全に生コード注入できる
+    # と判断する。それ以外（"#eeeeee"のようなhex形式や、記号を含む不正な値）はrgb()の文字列引数
+    # として渡す（Typstのコンパイルエラーとして安全に失敗する。文字列リテラル内なのでコード注入の
+    # 心配もない）。
+    COLOR_IDENTIFIER_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9\-]*$')
+
     def _color_to_typst(self, value):
-        """config.yamlの色文字列（例: "#eeeeee"）をTypstのrgb()呼び出しへ変換する（#45）。"""
-        return f'rgb("{escape_string_literal(str(value))}")'
+        """config.yamlやMarkdownの色文字列をTypstの色表現へ変換する（#45、#46）。
+        Typstのrgb()は"red"のような色名文字列を受け付けないため（hex文字列のみ）、"#rrggbb"形式は
+        rgb()に、"red"のような単純な識別子はTypstの色定数名としてそのまま渡す。"""
+        value = str(value).strip()
+        if self.COLOR_IDENTIFIER_RE.match(value):
+            return value
+        return f'rgb("{escape_string_literal(value)}")'
 
     def _table_header_fill_arg(self):
         """table_header.backgroundが指定されていれば、#table()のfill:引数（1行目のみ着色）を返す。

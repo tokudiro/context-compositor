@@ -81,7 +81,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * GFM拡張: テーブル・取り消し線（`~~text~~`、`.enable("strikethrough")`）・タスクリスト（`- [ ]`/`- [x]`、`mdit-py-plugins`の`tasklists_plugin`）に対応。山括弧付き自動リンク（`<https://example.com>`）はCommonMark標準機能で、`link_open`/`link_close`という通常のリンクと同じトークンとして出力されるため追加実装なしで動く。山括弧なしの裸URL自動リンク化（GFMの拡張自動リンク）は`linkify-it-py`という追加依存が要るため非対応とする（対応する場合は別途検討）。
 * タスクリストのチェックボックスは、`tasklists_plugin`が生HTML（`<input class="task-list-item-checkbox" ...>`）として出力するため、他のHTMLタグと同じ「未対応HTML」警告で消えてしまう問題があった。このパターンだけを`render_inline`内で特別に認識し、Unicodeのチェックボックス記号（☐/☑）に変換する。それ以外のHTMLは従来どおり警告のみ（HTMLは「対応した」のではなく、狭い許可リストへの1パターン追加として扱う方針。[#46](https://github.com/tokudiro/context-compositor/issues/46)で議論・記録）。
 * GitHub Wiki拡張: `[[用語]]`によるMarkdown内リンク記法。用語索引機能（[#47](https://github.com/tokudiro/context-compositor/issues/47)、**実装済み**。10章を参照）で利用する。
-* このスコープに含まれないもの: Obsidian固有の拡張（コールアウト・埋め込み・`==ハイライト==`等）、Pandoc記法等の第三の由来の記法（文字色指定など。[#46](https://github.com/tokudiro/context-compositor/issues/46)で個別に検討し、例外として扱う）、生HTML全般。
+* このスコープに含まれないもの: Obsidian固有の拡張（コールアウト・埋め込み・`==ハイライト==`等）。文字色指定（[#46](https://github.com/tokudiro/context-compositor/issues/46)、**実装済み**、10章）はGFM/GitHub Wikiどちらにも属さない例外として個別に採用した。それ以外のPandoc記法・生HTML全般は非対応のまま。
 
 原稿は Marp 形式（`<!-- header: ... -->` ディレクティブ、`---` によるスライド区切り）で書かれている実績があるため、同一の Markdown が Marp でもこのツールでも通ることを要件とする。
 
@@ -135,6 +135,10 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * **巻末用語索引**（[#47](https://github.com/tokudiro/context-compositor/issues/47)、GitHub Wiki拡張、7章）: `document.glossary: true`のとき、本文中の`[[用語]]`を検出し、巻末に用語と出現ページ番号の一覧（索引型。定義文は持たない）を自動生成する。**（実装済み）** 同一用語が複数ページに出現した場合は全ページ番号を重複除去のうえ昇順・カンマ区切りで列挙する。並び順は文字コード順（Pythonの`sorted()`）。`[[表示|用語]]`のような区切り記法は使い方が分かりにくいため不採用（[#48](https://github.com/tokudiro/context-compositor/issues/48)）。
   * **実装**: `[[用語]]`はAST上の`text`トークンの中身のみを正規表現（`WIKILINK_RE`）で走査して検出する（生テキスト全体への正規表現置換ではない）。これにより`code_inline`/フェンス内の`[[...]]`は対象トークンが異なるため巻き込まれない（実測で確認済み）。検出のたびに一意なTypstラベル（`gloss-0`, `gloss-1`, ...）を発行し、`#metadata(none)<gloss-N>`という不可視要素として用語テキストの直後に埋め込む。`TypstRenderer.glossary_terms`（用語→ラベルID一覧のdict、全チャプターを跨いで蓄積）に登録する。
   * 全チャプター処理後、`_build_glossary_section()`が`glossary_terms`から巻末ページのTypstコードを生成する。目次（`outline()`）と同じ「`context`+`query()`でレイアウト後にラベルの実際のページ番号を取得する」パターンを、`outline()`を使わず手動の`context { query(label(...)) }`ループで実装している（Typst公式ドキュメントが索引機能の実装例として案内する標準的な手法）。ページ番号の重複除去には`array.sorted().dedup()`を使う（`dedup()`単体は隣接要素のみの除去ではなく全体の重複除去であることを実機で確認したが、`sorted()`してから`dedup()`する順序の方が意図が明確なためこちらを採用）。
+* **文字色指定**（[#46](https://github.com/tokudiro/context-compositor/issues/46)、7章）: `[text]{color=...}`（Pandoc由来のブラケット+属性記法）と`<span style="color:...">`（HTML特別扱いの1パターン）の2記法を、config.yamlでの切り替えなしに常に両方サポートする。**（実装済み）** どちらの記法を使うかで同じ原稿の意味がconfig次第で変わる事態を避けるための設計判断（Marpディレクティブ持続機能を撤回した理由と同種の問題）。
+  * **実装**: `[text]{color=...}`は`mdit-py-plugins`の`attrs_plugin`を`spans=True, allowed=["color"]`で有効化して実現する（`spans`は既定`False`で、初回調査時にこれを見落として「対応していない」と誤判定した経緯がある。`allowed`でcolor以外の属性を解析段階で除去し、render_inline側の判定を単純化している）。`span_open`/`span_close`トークンとして出力され、`color`属性があれば`#text(fill: ...)`でラップする（無ければ何もラップしない。スタックで開閉を対応させる）。
+  * `<span style="color:...">`はHTML側の開始・終了が独立した`html_inline`トークンとして出てくるため、`render_inline`内でスタック（`html_span_depth`）を使って対応させる。段落が終わるまでに閉じられなかった場合、壊れたTypstコード（閉じ角括弧の不足によるコンパイルエラー）を生成しないよう自動的に閉じたうえで警告を出す。
+  * 色の値は、Typstの`rgb()`関数が`"#rrggbb"`のようなhex文字列は受け付けるが`"red"`のような色名文字列は受け付けない（コンパイルエラーになる）という仕様上の制約があり、`_color_to_typst()`（#45で新設、本機能でも再利用）が単純な英数字+ハイフンの識別子（`red`等）ならTypstの色定数名としてそのまま渡し、それ以外（hex形式や不正な値）は`rgb("...")`の文字列引数として渡す、という判定を行う。
 
 ## 11. プラグイン（図表描画アドイン）の設計方針
 2章の実行環境の要件は本章のプラグインにもそのまま適用される。重い依存関係を持つ図表描画ツールは、コアパイプライン（テキスト→PDF化）とは別に「オプトイン形式のプラグイン」として分離する。外部APIへの通信による図表生成を行わない（完全ローカル完結）という2章の絶対要件は、プラグインであっても緩めない。

@@ -24,9 +24,26 @@ CommonMark準拠に加え、GFM (GitHub Flavored Markdown) の一部とGitHub Wi
 | 自動リンク（`<https://example.com>`、山括弧付き） | 対応（CommonMark標準） |
 | 裸URLの自動リンク化（`https://example.com`、山括弧なし） | **非対応**。リンクにしたい場合は山括弧で囲むか `[表示テキスト](URL)` を使う |
 | GitHub Wikiの用語索引記法（`[[用語]]`） | 対応（`document.glossary: true`のときのみ。下記） |
-| 生HTML | 非対応（一部の狭い例外を除く。「Markdownの書き方」以降の各章を参照） |
+| 文字色指定 | 対応（GFM/GitHub Wikiのどちらにも属さない例外。下記） |
+| 生HTML | 非対応（`<span style="color:...">`を除く狭い例外のみ。「Markdownの書き方」以降の各章を参照） |
 
 対応するスコープの詳しい経緯は[doc/spec.md](../spec.md)を参照してください。
+
+## 文字色指定
+
+2つの記法をどちらも常にサポートしています。設定での切り替えはありません（同じ原稿がconfig次第で意味が変わることを避けるため）。
+
+```markdown
+[赤い文字]{color=red} や [青い文字]{color="#0000ff"} のように書けます。
+
+<span style="color:green">緑の文字</span> とも書けます。
+```
+
+- `[text]{color=...}`はPandoc由来のブラケット+属性記法です。GitHubの生表示では特別扱いされず、`{color=red}`がそのまま文字として見えます。
+- `<span style="color:...">`はGitHub上でもそのまま正しく色付き表示されます。ただし対応するのはこの1パターンのみで、他のHTMLタグ・他のCSSプロパティは今までどおり非対応（警告）です。
+- 色の指定は、Typstが認識する色名（`red`、`blue`等の英単語）か `"#rrggbb"` 形式のいずれかです。
+- `color`以外の属性（`[text]{class=foo}`等）は無視され、見た目には反映されません。
+- `<span>`を閉じ忘れた場合はビルドを止めず、自動的に閉じたうえで警告を出します。
 
 ## [[用語]]: 巻末用語索引
 
