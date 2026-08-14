@@ -77,6 +77,12 @@ python build.py --config <path/to/context-compositor.config.yaml>
 ## 7. Markdown 方言と Marp 互換
 本章は、ディレクティブ・front-matter・改ページ規則等の専用の変換規則を持つ唯一のフォーマットであるMarkdownの扱いを規定する（1章）。他フォーマット（YAML/JSON/プレーンテキスト等）は専用の変換規則を持たず、拡張子に応じて等幅表示にフォールバックするのみ（1章、[#15](https://github.com/tokudiro/context-compositor/issues/15)）。フォーマットごとに専用の変換規則を追加していく場合も、本章のMarkdown固有の扱いは維持する設計とする。
 
+**対応するMarkdown記法のスコープ**（[#48](https://github.com/tokudiro/context-compositor/issues/48)）: CommonMark（`markdown-it-py`の`commonmark`プリセット）を土台に、GFM (GitHub Flavored Markdown) の一部とGitHub Wikiの記法を対応範囲とする。**（実装済み）**
+* GFM拡張: テーブル・取り消し線（`~~text~~`、`.enable("strikethrough")`）・タスクリスト（`- [ ]`/`- [x]`、`mdit-py-plugins`の`tasklists_plugin`）に対応。山括弧付き自動リンク（`<https://example.com>`）はCommonMark標準機能で、`link_open`/`link_close`という通常のリンクと同じトークンとして出力されるため追加実装なしで動く。山括弧なしの裸URL自動リンク化（GFMの拡張自動リンク）は`linkify-it-py`という追加依存が要るため非対応とする（対応する場合は別途検討）。
+* タスクリストのチェックボックスは、`tasklists_plugin`が生HTML（`<input class="task-list-item-checkbox" ...>`）として出力するため、他のHTMLタグと同じ「未対応HTML」警告で消えてしまう問題があった。このパターンだけを`render_inline`内で特別に認識し、Unicodeのチェックボックス記号（☐/☑）に変換する。それ以外のHTMLは従来どおり警告のみ（HTMLは「対応した」のではなく、狭い許可リストへの1パターン追加として扱う方針。[#46](https://github.com/tokudiro/context-compositor/issues/46)で議論・記録）。
+* GitHub Wiki拡張: `[[用語]]`によるMarkdown内リンク記法。用語索引機能（[#47](https://github.com/tokudiro/context-compositor/issues/47)、設計確定・未実装）で利用予定。
+* このスコープに含まれないもの: Obsidian固有の拡張（コールアウト・埋め込み・`==ハイライト==`等）、Pandoc記法等の第三の由来の記法（文字色指定など。[#46](https://github.com/tokudiro/context-compositor/issues/46)で個別に検討し、例外として扱う）、生HTML全般。
+
 原稿は Marp 形式（`<!-- header: ... -->` ディレクティブ、`---` によるスライド区切り）で書かれている実績があるため、同一の Markdown が Marp でもこのツールでも通ることを要件とする。
 
 **方針の限界（意図的なスコープ）**: 「Marpでも通る」とは、Marp原稿を`chapters`にそのまま流し込んでもビルドが失敗したり不要な警告が出たりしない、という意味に限る。ディレクティブ・front-matterの一部キーの**値を実際に反映する**ことは要件にしていない（[#41](https://github.com/tokudiro/context-compositor/issues/41)）。Marpの`theme:`/`class:`/`backgroundColor:`やカスタムCSS等の見た目に関わる指定も`MARP_ONLY_KEYS`として同様に無視する。

@@ -15,6 +15,9 @@ import platform
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
+# タスクリスト(- [ ]/- [x])はGFM拡張のためcommonmarkプリセットに含まれず、mdit-py-pluginsの
+# プラグインとして追加する（#48）。
+from mdit_py_plugins.tasklists import tasklists_plugin
 # PyPIの typst パッケージ(typst-py)はコンパイラ本体をプラットフォーム別ホイールに同梱しているため、
 # tools/typst.exe のような実行バイナリをリポジトリに持たずに済む（pipがOSごとに正しい版を入れてくれる）
 import typst as typst_lib
@@ -117,7 +120,9 @@ class TypstRenderer:
 
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
                  plantuml_enabled=True, plantuml_auto_download=True, tool_dir=None):
-        self.md = MarkdownIt("commonmark").enable("table")
+        # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
+        # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
+        self.md = MarkdownIt("commonmark").enable("table").enable("strikethrough").use(tasklists_plugin)
         self.list_stack = []
         self.current_file = ""
         self.current_dir = ""
@@ -408,6 +413,14 @@ class TypstRenderer:
         line_no = t.map[0] + 1 if t.map else '?'
         print(f"[Warning] HTML tag detected at {self.current_file}:{line_no} : {t.content.strip()}. HTML is not supported and will be ignored in Typst output.")
 
+    def _task_checkbox_glyph(self, html):
+        """tasklists_pluginが出力する<input class="task-list-item-checkbox" ...>だけを認識し、
+        Unicodeのチェックボックス記号を返す（PDFは非対話的なので実際のcheckboxウィジェットは不要）。
+        該当しなければNone（呼び出し側で通常のHTML警告にフォールバックする）。"""
+        if 'task-list-item-checkbox' not in html:
+            return None
+        return '☑' if 'checked="checked"' in html else '☐'
+
     def _handle_html_token(self, t):
         """Marpのディレクティブコメント（<!-- header: X -->等）は、Marp原稿との共用時に不要な
         警告が出ないよう認識はするが、何も反映しない（値を読み捨てる）。実際に反映する機能は
@@ -643,6 +656,10 @@ class TypstRenderer:
                 res.append('#emph[')
             elif t.type == 'em_close':
                 res.append(']')
+            elif t.type == 's_open':
+                res.append('#strike[')
+            elif t.type == 's_close':
+                res.append(']')
             elif t.type == 'code_inline':
                 res.append(f'`{t.content}`')
             elif t.type in ['softbreak', 'hardbreak']:
@@ -671,6 +688,15 @@ class TypstRenderer:
                 res.append(f'#link("{escape_string_literal(href)}")[')
             elif t.type == 'link_close':
                 res.append(']')
+            elif t.type == 'html_inline':
+                # tasklists_pluginはチェックボックスを生HTML(<input class="task-list-item-checkbox" ...>)
+                # として出力する。#46で決めた「閉じた許可リスト」の考え方に沿い、このパターンだけを
+                # 認識してUnicodeのチェックボックス記号に変換する（#48）。それ以外のHTMLは従来どおり警告。
+                checkbox = self._task_checkbox_glyph(t.content)
+                if checkbox is not None:
+                    res.append(checkbox)
+                else:
+                    self._warn_html(t)
             else:
                 line_no = t.map[0] + 1 if t.map else '?'
                 print(f"[Warning] Unhandled inline token '{t.type}' at {self.current_file}:{line_no}")
