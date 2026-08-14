@@ -35,9 +35,9 @@ jobs:
 
 `plugins.graphviz`のみを使うプロジェクトは、これだけで完結する（Node.js/JRE等の追加インストール不要）。
 
-## ツールとドキュメントを別リポジトリのまま使う場合（兄弟チェックアウト）
+## ツールとドキュメントを別リポジトリのまま使う場合
 
-3章・8章の「ツール本体とドキュメントの分離」はGitHub Actions上でも成立する。`build.py`をドキュメント側リポジトリへコピー・同梱する必要はなく、context-compositorを別リポジトリとして`actions/checkout@v4`の`repository:`パラメータで指定し、兄弟ディレクトリとしてチェックアウトすればよい（[#24](https://github.com/tokudiro/context-compositor/issues/24)で実証済み）。
+3章・8章の「ツール本体とドキュメントの分離」はGitHub Actions上でも成立する。`build.py`をドキュメント側リポジトリへコピー・同梱する必要はなく、`actions/checkout@v4`を2回使い、自分のリポジトリとcontext-compositorをそれぞれ別のディレクトリへチェックアウトすればよい（2回目は`repository:`パラメータでcontext-compositorを指定し、`path:`で別の場所に展開する。[#24](https://github.com/tokudiro/context-compositor/issues/24)で実証済み）。
 
 ```yaml
 name: Build Docs
