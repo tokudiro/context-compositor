@@ -36,7 +36,7 @@ Mermaid込みで比較すると、context-compositor（約109MB）はQuarto（�
 
 ## 図表描画（Mermaid / Graphviz / PlantUML）の対応状況
 
-これも実際に調べると、context-compositorの優位性は薄い。
+これも実際に調べると、Mermaid/GraphvizについてはQuartoに対する優位性は薄い。ただしPlantUMLは状況が異なる。
 
 | ツール | Mermaid | Graphviz(dot) | PlantUML |
 | --- | --- | --- | --- |
