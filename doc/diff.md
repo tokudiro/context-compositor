@@ -1,8 +1,8 @@
 # 汎用ツールとの違い
 
-「Markdown → Typst → PDF」という技術スタック自体は、context-compositor独自のものではない。[Quarto](https://quarto.org/docs/output-formats/typst.html)はTypstをバックエンドに選べる汎用出版システムで、v1.9以降はbookプロジェクトで複数の`.qmd`ファイルを1つのPDFへ合成する機能も持つ。[md2pdf](https://github.com/cipherchabon/md2pdf)のような単一ファイル向けの軽量CLIも複数存在する。
+「Text → PDF」という技術スタック自体は、context-compositor独自のものではない。[Quarto](https://quarto.org/docs/output-formats/typst.html)はTypstをバックエンドに選べる汎用出版システムで、v1.9以降はbookプロジェクトで複数の`.qmd`ファイルを1つのPDFへ合成する機能も持つ。[md2pdf](https://github.com/cipherchabon/md2pdf)のような単一ファイル向けの軽量CLIも複数存在する。
 
-したがって、context-compositorの存在意義は「技術的に他にない機能」ではなく、**特定のワークフロー(AIが生成した断片的なテキストを、人間がレビューして安全に本番化する)専用に、運用ルールごとツールへ埋め込んでいること**にある。以下、具体的な違いを挙げる。
+したがって、context-compositorの存在意義は「技術的に他にない機能」ではなく、**特定のワークフロー(断片的なテキストを、AIと人が協業して練り上げ、安全に本番化する)専用に、運用ルールごとツールへ埋め込んでいること**にある。以下、具体的な違いを挙げる。
 
 ## 比較表
 
