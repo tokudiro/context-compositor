@@ -1,7 +1,26 @@
-// front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して反映する
-// 想定（#38）。このテンプレートは表示場所を持たないため何もしない（渡された値はそのまま無視する）。
-// 実際に表示するテンプレートの例は templates/template_with_chapter_meta.typ を参照。
-#let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = doc
+// templates/template.typ をベースに、front-matterのtitle/subtitle/author/dateを
+// そのチャプターのページに限定して反映する chapter-meta() を実装したテンプレート例（#38）。
+// 文書全体の表紙（title/subtitle/author/date）は常にconfig.yaml側（conf()の引数）が正とする。
+// front-matterはあくまで「そのチャプターのページ」だけに影響する、文書全体には影響しない。
+//
+// 実装メモ: Typstのset/showは宣言したブロックを抜けると失効するため、
+// 「このチャプター以降・次のchapter-meta呼び出しまで有効」という値は素朴な if 分岐の
+// set では実現できない（if内で宣言したsetは、その if ブロックを抜けたdocには効かない）。
+// 代わりにstate()を使い、ヘッダーと見出しの装飾をcontext経由で反応的に読ませる。
+#let cc-title = state("cc-chapter-title", none)
+#let cc-subtitle = state("cc-chapter-subtitle", none)
+#let cc-author = state("cc-chapter-author", none)
+#let cc-date = state("cc-chapter-date", none)
+
+// title: build.py側で「front-matterの値、無ければ文書全体のtitle」に解決済みの前提（常に非none）。
+// subtitle/author/dateはfront-matterに無ければnoneのままで、その章にバイラインを出さない。
+#let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = {
+  cc-title.update(title)
+  cc-subtitle.update(subtitle)
+  cc-author.update(author)
+  cc-date.update(date)
+  doc
+}
 
 // 幅・高さいずれかが利用可能領域をはみ出す場合だけ、縦横比を保って自動縮小する（mermaidなど事前レンダリング済み画像用）
 #let MAX_IMG_HEIGHT = 12cm
@@ -33,6 +52,10 @@
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
   // OSフォントは直接指定しない。Noto Sans JP に無いグリフはTypstが自動でシステムフォントにフォールバックする）
   set text(font: "Noto Sans JP", size: 10.5pt)
+
+  // 本文のヘッダーに使うtitleの既定値（chapter-metaが呼ばれるまでの間・章のfront-matterが
+  // 無い場合のフォールバック）を、文書全体のtitleで初期化しておく。
+  cc-title.update(title)
 
   // プラグイン: Graphviz (dot) 自動レンダリングと、はみ出し防止の自動縮小
   // graphviz: false のときは既定のraw表示（素のコード表示）にフォールバックする。
@@ -99,8 +122,9 @@
   set page(
     paper: paper_size,
     flipped: landscape,
-    header: align(right)[
-      #text(8pt, fill: luma(100))[#title]
+    // ヘッダーはcc-title状態を反応的に読む。chapter-meta()が更新するまでは文書全体のtitleのまま。
+    header: context align(right)[
+      #text(8pt, fill: luma(100))[#cc-title.get()]
       #v(0.5em)
       #line(length: 100%, stroke: 0.5pt + luma(200))
     ],
@@ -109,16 +133,37 @@
     ]
   )
   counter(page).update(1) // 本文のページ番号を 1 からリセット
-  
+
   set par(justify: true, leading: 0.8em)
-  
-  // 見出し1 (大見出し/章) の直前で必ず改ページする（すでにページ先頭の場合はスキップ）
-  show heading.where(level: 1): it => {
+
+  // 見出し1 (大見出し/章) の直前で必ず改ページし、直後にその章のsubtitle/author/date
+  // （chapter-metaで設定されていれば）をバイラインとして表示する。バイラインを見出しの
+  // 前段の独立した内容として置くと、見出し側のpagebreak(weak: true)がバイラインだけを
+  // 別ページに追いやってしまうため、見出しのshowルール自身の中で出す。
+  show heading.where(level: 1): it => context {
     pagebreak(weak: true)
     v(1em)
     it
-    v(0.5em)
+    let sub = cc-subtitle.get()
+    let auth = cc-author.get()
+    let dt = cc-date.get()
+    if sub != none or auth != none or dt != none {
+      let byline = ()
+      if auth != none { byline.push(auth) }
+      if dt != none { byline.push(dt) }
+      block(above: 0.3em, below: 0.5em)[
+        #if sub != none [
+          #text(11pt, style: "italic")[#sub]
+          #linebreak()
+        ]
+        #if byline.len() > 0 [
+          #text(9pt, fill: luma(120))[#byline.join(" -- ")]
+        ]
+      ]
+    } else {
+      v(0.5em)
+    }
   }
-  
+
   doc
 }

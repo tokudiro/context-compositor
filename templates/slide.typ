@@ -1,3 +1,8 @@
+// front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して反映する
+// 想定（#38）。このテンプレートは表示場所を持たないため何もしない（渡された値はそのまま無視する）。
+// 実際に表示するテンプレートの例は templates/template_with_chapter_meta.typ を参照。
+#let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = doc
+
 // 幅・高さいずれかが利用可能領域をはみ出す場合だけ、縦横比を保って自動縮小する
 // （mermaidなど事前レンダリング済み画像用。正方形に近い図は幅基準だけだと高さが溢れるため、
 // 幅・高さ両方の縮小率を計算し、小さい方（より厳しい制約）を採用する）。

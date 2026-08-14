@@ -703,7 +703,7 @@ def build():
     safe_date = escape_string_literal(date_str)
 
     typst_code = f"""
-#import "{template_path.replace(os.sep, '/')}": conf, fit-image
+#import "{template_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",
@@ -820,9 +820,21 @@ def build():
                 font_size = front_matter.get('font_size')
                 if font_size:
                     # スコープを#[...]で閉じ、このチャプターだけにフォントサイズ指定を適用する
-                    typst_code += f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
-                else:
-                    typst_code += chapter_typst
+                    chapter_typst = f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
+
+                # front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して
+                # chapter-meta()経由で渡す（7章、#38）。文書全体の表紙はconfig.yaml側のみが正であり、
+                # front-matterはここでは一切影響しない。表示するかどうか（ヘッダー上書き・バイライン等）
+                # はテンプレート側の裁量（既定の2テンプレートは何もしない。templates/template_with_chapter_meta.typ
+                # が実装例）。titleは常に有効な値（front-matter優先、無ければ文書全体のtitle）を渡す
+                # （本文ページのヘッダーは常に何かを表示するものであり、noneにする理由が無いため）。
+                # subtitle/author/dateはfront-matterに無ければnoneのまま渡し、その章だけ何も表示させない。
+                effective_title = front_matter.get('title') or doc_config.get('title', 'Untitled')
+                meta_parts = [f'title: "{escape_string_literal(str(effective_title))}"']
+                for key in ('subtitle', 'author', 'date'):
+                    value = front_matter.get(key)
+                    meta_parts.append(f'{key}: "{escape_string_literal(str(value))}"' if value else f'{key}: none')
+                typst_code += f"#chapter-meta({', '.join(meta_parts)})[\n{chapter_typst}\n]\n"
                 typst_code += "\n#pagebreak(weak: true)\n"
             else:
                 print(f"[Error] Chapter file not found: {md_path}")
