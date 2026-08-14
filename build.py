@@ -714,36 +714,36 @@ def build():
     for ch in chapters:
         if isinstance(ch, str):
             ch_file = ch
-            ch_landscape = global_landscape
-            ch_paper = global_paper
+            ch_dict = {}
             ch_type = "file"
         elif not isinstance(ch, dict):
             print(f"[Error] Invalid chapter entry (must be a string or a mapping): {ch!r}")
             sys.exit(1)
         elif "aggregate" in ch:
             ch_file = ch["aggregate"]
-            ch_landscape = str(ch.get("landscape", global_landscape)).lower() == 'true'
-            ch_paper = ch.get("paper_size", global_paper)
+            ch_dict = ch
             ch_type = "aggregate"
         else:
             ch_file = ch.get("file")
-            ch_landscape = str(ch.get("landscape", global_landscape)).lower() == 'true'
-            ch_paper = ch.get("paper_size", global_paper)
+            ch_dict = ch
             ch_type = "file"
 
         if not ch_file:
             print(f"[Error] Invalid chapter entry (no 'file' or 'aggregate' key): {ch!r}")
             sys.exit(1)
 
-        if ch_landscape != current_landscape or ch_paper != current_paper:
-            typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
-            current_landscape = ch_landscape
-            current_paper = ch_paper
-            
         if ch_type == "aggregate":
+            # aggregateはYAML/JSONのテストケース集約であり、front-matter（Markdown固有の概念）は関係しない
+            ch_landscape = str(ch_dict.get("landscape", global_landscape)).lower() == 'true'
+            ch_paper = ch_dict.get("paper_size", global_paper)
+            if ch_landscape != current_landscape or ch_paper != current_paper:
+                typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
+                current_landscape = ch_landscape
+                current_paper = ch_paper
+
             agg_path = os.path.join(inputs_dir, ch_file)
-            typst_code += f'= {renderer.escape_typst(ch.get("title", "Test Cases"))}\n\n'
-            
+            typst_code += f'= {renderer.escape_typst(ch_dict.get("title", "Test Cases"))}\n\n'
+
             if os.path.exists(agg_path) and os.path.isdir(agg_path):
                 # 【修正】YAMLだけでなくJSONファイルも読み込み対象に含める
                 tc_files = sorted([f for f in os.listdir(agg_path) if f.endswith(('.yaml', '.yml', '.json'))])
@@ -792,7 +792,20 @@ def build():
                 chapter_typst = renderer.render_chapter(
                     md_text, filepath=md_path,
                     drop_leading_title=is_first_chapter and cover_mode in ('replace', 'none'))
-                font_size = renderer.front_matter.get('font_size')
+                front_matter = renderer.front_matter
+
+                # front-matterのpaper_size/landscapeは、config.yamlのチャプター個別設定より弱い
+                # 優先順位で適用する（7章、#17）。config.yaml側に明示指定が無い場合のみ使う。
+                # front-matterはファイルを読んで初めてわかるため、#set pageの要否判定もここで行う
+                # （aggregateには front-matter の概念が無く、判定をchapters読み込み前に済ませられる）。
+                ch_landscape = str(ch_dict.get("landscape", front_matter.get("landscape", global_landscape))).lower() == 'true'
+                ch_paper = ch_dict.get("paper_size", front_matter.get("paper_size", global_paper))
+                if ch_landscape != current_landscape or ch_paper != current_paper:
+                    typst_code += f'#set page(paper: "{ch_paper}", flipped: {str(ch_landscape).lower()})\n'
+                    current_landscape = ch_landscape
+                    current_paper = ch_paper
+
+                font_size = front_matter.get('font_size')
                 if font_size:
                     # スコープを#[...]で閉じ、このチャプターだけにフォントサイズ指定を適用する
                     typst_code += f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"

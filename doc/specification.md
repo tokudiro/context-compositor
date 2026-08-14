@@ -80,7 +80,8 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 * **ディレクティブコメントの解釈**: `<!-- header: X -->` `<!-- footer: X -->` `<!-- paginate: true -->` を設定として取り込む。以降のページに適用され、次の同種ディレクティブまで有効（Marp と同じスコープ規則）。未知のディレクティブは行番号付きの警告にとどめ、ビルドは継続する。
 * **front-matter**: 冒頭の `---` ブロックは水平線ではなく設定として扱う。認識済みキーは `title`/`subtitle`/`author`/`date`/`paper_size`/`landscape`/`font_size`（Marp固有キーの`marp:`/`theme:`等は無視、それ以外の未知キーは警告）。
-  * **（未実装）** 実際に使われるのは `font_size` のみ。他のキーは警告を出さないだけで、値は読み捨てられている。将来は全キーを、config.yamlより弱い優先順位（6章）で適用する想定。
+  * `paper_size`/`landscape`は、`config.yaml`のチャプター個別設定（10章）より弱い優先順位で適用する。`chapters`の該当エントリに`paper_size`/`landscape`の明示指定が無い場合のみ、front-matterの値を使う（[#17](https://github.com/tokudiro/context-compositor/issues/17)）。
+  * **（未実装）** `title`/`subtitle`/`author`/`date`は、警告を出さないまま値が読み捨てられている。これらは章（ファイル）ごとに書けるfront-matterに対し、文書全体で1つしかない値（表紙用）であるため、どの章のfront-matterを採用するか・`config.yaml`の明示指定と既定値をどう区別するかの設計が必要で、別途検討する。
 * **`---` はページ区切り**（`#pagebreak()`）として扱う。ただしテンプレート側の「見出し直前で改ページ」と二重に効いて空ページが発生する既知の不具合があるため、連続する改ページは1つに畳み、原則 `#pagebreak(weak: true)` を用いる。
 * **表紙の二重化を避ける**: Marp のタイトルスライド（先頭の H1 と直後の H2）とテンプレートの表紙は同じ役割のため、両方出すと 1 枚目が重複する。`document.cover` で扱いを選べる。
   * `template`（既定）: テンプレートの表紙のみを出す。Markdown 側には手を入れない。
