@@ -18,6 +18,27 @@
   }
 })
 
+// 本文ページのヘッダー・フッター（#42）。template.typと同じ関数名でエクスポートし、build.py側が
+// テンプレート種別を意識せず同じ呼び出し方でチャプター単位の上書きを再発行できるようにする。
+#let render-header(header_text) = align(left)[#text(16pt, fill: luma(100))[#header_text]]
+
+#let render-footer(footer_text, paginate) = {
+  let page-num = align(right)[#text(16pt, fill: luma(100))[#context counter(page).display("1")]]
+  if footer_text != none and paginate {
+    grid(
+      columns: (1fr, 1fr),
+      align(left)[#text(16pt, fill: luma(100))[#footer_text]],
+      page-num,
+    )
+  } else if footer_text != none {
+    align(left)[#text(16pt, fill: luma(100))[#footer_text]]
+  } else if paginate {
+    page-num
+  } else {
+    none
+  }
+}
+
 #let conf(
   title: none,
   subtitle: none,
@@ -28,6 +49,9 @@
   cover: true,
   cover_page_number: true,
   graphviz: true,
+  header: none,
+  footer: none,
+  paginate: true,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -72,12 +96,12 @@
     pagebreak()
   }
 
-  // 本文のページ設定（ページ番号は常に表示）
+  // 本文のページ設定
   set page(
     paper: paper_size,
     margin: (x: 2cm, y: 1.5cm),
-    header: none,
-    footer: page-number-footer
+    header: if header != none { render-header(header) } else { none },
+    footer: render-footer(footer, paginate),
   )
 
   // 本文の設定

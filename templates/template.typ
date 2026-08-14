@@ -13,6 +13,33 @@
   }
 })
 
+// 本文ページのヘッダー・フッター（#42）。chapters[]/front-matterによるチャプター単位の上書きは
+// build.py側が章ごとに#set page(header: render-header(...), footer: render-footer(...))を
+// 再発行する形で実現する（state()は使わない。#16の反省点。landscape/paper_sizeと同じ
+// 「明示指定を都度出し直す」パターンで、チャプターの並べ替えに対して安全）。
+#let render-header(header_text) = align(right)[
+  #text(8pt, fill: luma(100))[#header_text]
+  #v(0.5em)
+  #line(length: 100%, stroke: 0.5pt + luma(200))
+]
+
+#let render-footer(footer_text, paginate) = {
+  let page-num = context counter(page).display("1")
+  if footer_text != none and paginate {
+    grid(
+      columns: (1fr, 1fr),
+      align(left)[#text(9pt)[#footer_text]],
+      align(right)[#text(9pt)[#page-num]],
+    )
+  } else if footer_text != none {
+    align(left)[#text(9pt)[#footer_text]]
+  } else if paginate {
+    align(center)[#text(9pt)[#page-num]]
+  } else {
+    none
+  }
+}
+
 #let conf(
   title: none,
   subtitle: none,
@@ -23,6 +50,9 @@
   cover: true,
   cover_page_number: false,
   graphviz: true,
+  header: none,
+  footer: none,
+  paginate: true,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -94,14 +124,8 @@
   set page(
     paper: paper_size,
     flipped: landscape,
-    header: align(right)[
-      #text(8pt, fill: luma(100))[#title]
-      #v(0.5em)
-      #line(length: 100%, stroke: 0.5pt + luma(200))
-    ],
-    footer: align(center)[
-      #text(9pt)[#context counter(page).display("1")]
-    ]
+    header: render-header(if header != none { header } else { title }),
+    footer: render-footer(footer, paginate),
   )
   counter(page).update(1) // 本文のページ番号を 1 からリセット
 

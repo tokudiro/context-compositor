@@ -45,6 +45,7 @@ landscape: true
 | --- | --- | --- |
 | `font_size` | そのファイル全体 | front-matterのみ |
 | `paper_size` / `landscape` | そのファイル全体 | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定 |
+| `header` / `footer` / `paginate` | そのファイル全体（他の章には持続しない） | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定（[#42](https://github.com/tokudiro/context-compositor/issues/42)） |
 | `title` / `subtitle` / `author` / `date` | 認識はするが反映しない（読み捨てる） | — |
 
 `title`/`subtitle`/`author`/`date`は、Marp原稿との共用時にエラーや警告が出ないよう認識だけしていますが、実際には何も反映されません。文書全体のタイトル等は `document:` の設定（「document: 文書全体の設定」の章）で指定してください。
