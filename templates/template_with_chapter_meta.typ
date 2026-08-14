@@ -12,6 +12,13 @@
 #let cc-author = state("cc-chapter-author", none)
 #let cc-date = state("cc-chapter-date", none)
 
+// Marpディレクティブ（<!-- header: X -->等）の値。同じくstate()で反応的に読む（7章、#16）。
+// headerディレクティブは、chapter-meta由来のtitleより優先してヘッダーに表示する
+// （Marpディレクティブは著者が明示的にそのページ向けに書いたものであるため）。
+#let cc-marp-header = state("cc-marp-header", none)
+#let cc-marp-footer = state("cc-marp-footer", none)
+#let cc-marp-paginate = state("cc-marp-paginate", true)
+
 // title: build.py側で「front-matterの値、無ければ文書全体のtitle」に解決済みの前提（常に非none）。
 // subtitle/author/dateはfront-matterに無ければnoneのままで、その章にバイラインを出さない。
 #let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = {
@@ -122,15 +129,30 @@
   set page(
     paper: paper_size,
     flipped: landscape,
-    // ヘッダーはcc-title状態を反応的に読む。chapter-meta()が更新するまでは文書全体のtitleのまま。
-    header: context align(right)[
-      #text(8pt, fill: luma(100))[#cc-title.get()]
-      #v(0.5em)
-      #line(length: 100%, stroke: 0.5pt + luma(200))
-    ],
-    footer: align(center)[
-      #text(9pt)[#context counter(page).display("1")]
-    ]
+    // ヘッダーはMarpのheaderディレクティブがあればそれを優先し、無ければcc-title
+    // （chapter-meta由来。#38）を表示する。
+    header: context {
+      let marp-header = cc-marp-header.get()
+      align(right)[
+        #text(8pt, fill: luma(100))[#if marp-header != none { marp-header } else { cc-title.get() }]
+        #v(0.5em)
+        #line(length: 100%, stroke: 0.5pt + luma(200))
+      ]
+    },
+    // フッターはMarpのfooterディレクティブが無ければ、従来どおりページ番号だけを中央に表示する。
+    footer: context {
+      let marp-footer = cc-marp-footer.get()
+      let show-num = cc-marp-paginate.get()
+      if marp-footer == none {
+        if show-num { align(center)[#text(9pt)[#counter(page).display("1")]] } else { [] }
+      } else {
+        grid(
+          columns: (1fr, auto),
+          align(left)[#text(9pt, fill: luma(120))[#marp-footer]],
+          if show-num { align(right)[#text(9pt)[#counter(page).display("1")]] } else { [] }
+        )
+      }
+    }
   )
   counter(page).update(1) // 本文のページ番号を 1 からリセット
 

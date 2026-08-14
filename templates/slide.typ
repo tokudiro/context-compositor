@@ -3,6 +3,13 @@
 // 実際に表示するテンプレートの例は templates/template_with_chapter_meta.typ を参照。
 #let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = doc
 
+// Marpディレクティブ（<!-- header: X -->等）の値。以降のページに適用され、次の同種
+// ディレクティブまで有効（Marpと同じスコープ規則、7章、#16）。チャプター（ファイル）を
+// またいで持続する必要があるため、chapter-metaと同じくstate()で反応的に読む。
+#let cc-marp-header = state("cc-marp-header", none)
+#let cc-marp-footer = state("cc-marp-footer", none)
+#let cc-marp-paginate = state("cc-marp-paginate", true)
+
 // 幅・高さいずれかが利用可能領域をはみ出す場合だけ、縦横比を保って自動縮小する
 // （mermaidなど事前レンダリング済み画像用。正方形に近い図は幅基準だけだと高さが溢れるため、
 // 幅・高さ両方の縮小率を計算し、小さい方（より厳しい制約）を採用する）。
@@ -77,12 +84,33 @@
     pagebreak()
   }
 
-  // 本文のページ設定（ページ番号は常に表示）
+  // 本文のページ設定（ページ番号は常に表示）。ヘッダーは既定では無し（Marpのheader
+  // ディレクティブがあるときだけ表示する）。フッターはfooterディレクティブが無ければ
+  // 従来どおりページ番号のみ、あるときは左にfooterテキスト・右にページ番号を出す。
   set page(
     paper: paper_size,
     margin: (x: 2cm, y: 1.5cm),
-    header: none,
-    footer: page-number-footer
+    header: context {
+      let marp-header = cc-marp-header.get()
+      if marp-header != none {
+        align(right)[#text(14pt, fill: luma(120))[#marp-header]]
+      } else {
+        none
+      }
+    },
+    footer: context {
+      let marp-footer = cc-marp-footer.get()
+      let show-num = cc-marp-paginate.get()
+      if marp-footer == none {
+        if show-num { page-number-footer } else { [] }
+      } else {
+        grid(
+          columns: (1fr, auto),
+          align(left)[#text(14pt, fill: luma(120))[#marp-footer]],
+          if show-num { align(right)[#text(16pt, fill: luma(100))[#counter(page).display("1")]] } else { [] }
+        )
+      }
+    }
   )
 
   // 本文の設定

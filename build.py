@@ -84,6 +84,11 @@ class TypstRenderer:
     LAYOUT_BLOCK_RE = re.compile(r'^::: *(layout-right|layout-compare) *\r?\n(.*?)\r?\n::: *\r?$', re.MULTILINE | re.DOTALL)
     MERMAID_FENCE_RE = re.compile(r'```mermaid\r?\n(.*?)\r?\n```', re.DOTALL)
 
+    # Marpディレクティブコメント。以降のページに適用され、次の同種ディレクティブまで有効
+    # （Marpと同じスコープ規則、7章、#16）。チャプター（ファイル）をまたいで持続する必要があるため、
+    # テンプレート側のstate()を介して反映する（#38のchapter-metaと同じ理由・同じ仕組み）。
+    DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:\s*(.*?)\s*-->\s*$')
+
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True):
         self.md = MarkdownIt("commonmark").enable("table")
         self.list_stack = []
@@ -159,8 +164,11 @@ class TypstRenderer:
         """通常のMarkdown断片をASTベースでTypstへ変換する（layout-rightブロックの前後の地の文用）"""
         self.list_stack = []
         tokens = self.md.parse(text)
-        start = self._skip_leading_title(tokens) if drop_leading_title else 0
-        return self.render_tokens(tokens, start)
+        if drop_leading_title:
+            start, directive_prefix = self._skip_leading_title(tokens)
+        else:
+            start, directive_prefix = 0, ""
+        return directive_prefix + self.render_tokens(tokens, start)
 
     def _render_layout_block(self, inner_text):
         """::: layout-right ... ::: ブロックを、左=テキスト／右=画像の2カラムgridへ変換する"""
@@ -212,12 +220,15 @@ class TypstRenderer:
         )
 
     def _skip_leading_title(self, tokens):
-        """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす"""
+        """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす。
+        戻り値は (以降を処理する開始インデックス, 読み飛ばした先頭のディレクティブが生成したTypstコード)。"""
         i = 0
         dropped = []
-        # 先頭のHTMLコメント（Marpのディレクティブ等）は読み飛ばす。ただし警告は従来どおり出す
+        directive_prefix = []
+        # 先頭のHTMLコメント（Marpのディレクティブ等）は読み飛ばす。ディレクティブは取り込み、
+        # それ以外は従来どおり警告のみ
         while i < len(tokens) and tokens[i].type in ['html_block', 'html_inline']:
-            self._warn_html(tokens[i])
+            directive_prefix.append(self._handle_html_token(tokens[i]))
             i += 1
         while i < len(tokens) and tokens[i].type == 'heading_open' and int(tokens[i].tag[1:]) <= 2:
             j = i
@@ -227,12 +238,14 @@ class TypstRenderer:
                 j += 1
             i = j + 1
         if not dropped:
-            return 0
+            # タイトルが見つからなかった場合、通常のrender_tokens(tokens, 0)で先頭から
+            # 処理し直すため、ここで集めたディレクティブの出力は使わない（二重発行防止）。
+            return 0, ""
         if i < len(tokens) and tokens[i].type == 'hr':
             i += 1
         # サイレントに本文を捨てないよう、取り除いた内容は必ずログに出す
         print(f"[Info] Cover: replaced the leading title slide of {self.current_file} ({' / '.join(dropped)})")
-        return i
+        return i, "".join(directive_prefix)
 
     def strip_front_matter(self, text):
         """冒頭のfront-matterを本文から除去し、設定として返す。行番号は空行で維持する"""
@@ -319,7 +332,7 @@ class TypstRenderer:
                 else:
                     result.append(f"```{lang}\n{t.content}```\n\n")
             elif t.type in ['html_inline', 'html_block']:
-                self._warn_html(t)
+                result.append(self._handle_html_token(t))
             elif t.type in ['th_open', 'td_open']:
                 result.append('[')
             elif t.type in ['th_close', 'td_close']:
@@ -332,6 +345,28 @@ class TypstRenderer:
     def _warn_html(self, t):
         line_no = t.map[0] + 1 if t.map else '?'
         print(f"[Warning] HTML tag detected at {self.current_file}:{line_no} : {t.content.strip()}. HTML is not supported and will be ignored in Typst output.")
+
+    def _handle_html_token(self, t):
+        """MarpのディレクティブコメントはHTML警告を出さず、テンプレート側のstate経由で設定として
+        取り込む（7章、#16）。それ以外（未対応のディレクティブ・生のHTML）は従来どおり警告のみで
+        ビルドを継続する。"""
+        m = self.DIRECTIVE_RE.match(t.content.strip())
+        if not m:
+            self._warn_html(t)
+            return ""
+        kind, raw_value = m.group(1), m.group(2)
+        if kind == 'paginate':
+            if raw_value not in ('true', 'false'):
+                self._warn_html(t)
+                return ""
+            return f"#cc-marp-paginate.update({raw_value})\n"
+        # header/footer: Marpの慣習に合わせ、値のクォート有無どちらも受け付ける
+        if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] == '"':
+            raw_value = raw_value[1:-1]
+        state_name = "cc-marp-header" if kind == "header" else "cc-marp-footer"
+        if raw_value == "":
+            return f"#{state_name}.update(none)\n"
+        return f'#{state_name}.update("{escape_string_literal(raw_value)}")\n'
 
     def _ends_with_newline(self, result):
         for s in reversed(result):
@@ -703,7 +738,7 @@ def build():
     safe_date = escape_string_literal(date_str)
 
     typst_code = f"""
-#import "{template_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta
+#import "{template_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta, cc-marp-header, cc-marp-footer, cc-marp-paginate
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",
