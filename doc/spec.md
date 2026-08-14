@@ -121,6 +121,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * **章ごとのページ設定 (Dynamic Layout)**: ドキュメント全体または特定の章（Markdownファイル単位）に、独立して用紙サイズ（例: A4, A3）と用紙の向き（Landscape/Portrait）を指定できる。設定は `config.yaml` のグローバル設定および章ごとのローカル設定（上書き）として定義する。
   * テンプレートは受け取った `paper_size` / `landscape` を必ず `set page` に反映すること。現状 `templates/slide.typ` は `landscape` を引数に取りながら使っておらず、グローバル指定が無視されている。
 * **データ駆動型アグリゲーション (Data-driven Aggregation)**: 「1テストケース＝1ファイル」の原則（Gitでのコンフリクト回避・並行作業の容易化）を守るため、指定ディレクトリ内の大量のYAML/JSONファイルを読み込み、AST変換を経由してTypstのネイティブなテーブル（マトリクス）として出力する。集約ディレクトリのパス基準は5章に従う。
+* **テーブルヘッダのスタイル**（[#45](https://github.com/tokudiro/context-compositor/issues/45)）: 通常のMarkdownテーブル（```` | a | b | ````構文）のヘッダ行の太字・背景色・文字色を、`document.table_header`（グローバル）と`chapters[].table_header`（章ごとの上書き。landscape/paper_sizeと同じ優先順位パターン）で指定できる。**（実装済み）** 未指定のキーは装飾なし（後方互換）。front-matterでの上書きは非対応（`_render_markdown_chapter`がfront-matter解決前に`table_header`を確定させる必要があるため）。aggregate（YAML/JSONテストケース集約）テーブルは別コードパスであり対象外（既存の固定スタイルのまま）。実装は`TypstRenderer.table_header_style`（章ごとに`_render_markdown_chapter`が設定）を`render_tokens`の`table_open`/`th_open`/`th_close`が参照し、`#table(..., fill: ...)`と`#strong[]`/`#text(fill: ...)`のTypstコードを生成する。
 
 ## 11. プラグイン（図表描画アドイン）の設計方針
 2章の実行環境の要件は本章のプラグインにもそのまま適用される。重い依存関係を持つ図表描画ツールは、コアパイプライン（テキスト→PDF化）とは別に「オプトイン形式のプラグイン」として分離する。外部APIへの通信による図表生成を行わない（完全ローカル完結）という2章の絶対要件は、プラグインであっても緩めない。

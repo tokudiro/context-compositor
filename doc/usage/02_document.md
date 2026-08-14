@@ -10,6 +10,21 @@
 | `landscape` | 横向きにするか | `false` |
 | `cover` | 表紙の扱い（下記） | `"template"` |
 | `cover_page_number` | 表紙にページ番号を出すか | テンプレートの既定値 |
+| `table_header` | 通常のMarkdownテーブルのヘッダ行スタイル（下記） | 無装飾 |
+
+## table_header: テーブルヘッダのスタイル
+
+通常のMarkdownテーブル（` | a | b | `構文）のヘッダ行に、太字・背景色・文字色を指定できます（`chapters`側で章ごとに上書きも可能。「chapters: 章の並び」の章を参照）。未指定のキーは装飾なし（従来どおり）です。
+
+```yaml
+document:
+  table_header:
+    bold: true            # 既定 false
+    background: "#eeeeee" # 既定 none（Typstのrgb()に渡せる形式。#rrggbb等）
+    color: "#333333"      # 既定 none
+```
+
+なお、aggregate（YAML/JSONテストケース集約）テーブルのヘッダは対象外です（別途固定スタイルが適用されます）。
 
 ## cover の4つのモード
 

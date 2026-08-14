@@ -147,6 +147,10 @@ class TypstRenderer:
         self._mermaid_playwright = None
         self._mermaid_chrome_proc = None
         self._mermaid_profile_dir = None
+        # document.table_header / chapters[].table_headerのマージ結果（#45）。
+        # _render_markdown_chapterが章ごとに設定する。bold/background/colorいずれも
+        # 未指定なら従来どおり無装飾（キーが無ければ何もしない）。
+        self.table_header_style = {}
         # plugins.plantuml: true（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
         # plantuml.jarで描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
         self.plantuml_enabled = plantuml_enabled
@@ -362,7 +366,7 @@ class TypstRenderer:
                     result.append('\n')
             elif t.type == 'table_open':
                 cols = self._count_table_cols(tokens, i)
-                result.append(f'#table(\n  columns: {cols},\n  ')
+                result.append(f'#table(\n  columns: {cols}{self._table_header_fill_arg()},\n  ')
             elif t.type == 'table_close':
                 result.append('\n)\n\n')
             elif t.type == 'hr':
@@ -385,9 +389,15 @@ class TypstRenderer:
                     result.append(self._render_raw_text(t.content, lang or None))
             elif t.type in ['html_inline', 'html_block']:
                 result.append(self._handle_html_token(t))
-            elif t.type in ['th_open', 'td_open']:
+            elif t.type == 'th_open':
+                open_wrap, _ = self._table_header_open_close()
+                result.append('[' + open_wrap)
+            elif t.type == 'th_close':
+                _, close_wrap = self._table_header_open_close()
+                result.append(close_wrap + '], ')
+            elif t.type == 'td_open':
                 result.append('[')
-            elif t.type in ['th_close', 'td_close']:
+            elif t.type == 'td_close':
                 result.append('], ')
             elif t.type == 'tr_close':
                 result.append('\n  ')
@@ -676,6 +686,33 @@ class TypstRenderer:
             if tokens[i].type == 'tr_close':
                 break
         return max(1, cols)
+
+    def _color_to_typst(self, value):
+        """config.yamlの色文字列（例: "#eeeeee"）をTypstのrgb()呼び出しへ変換する（#45）。"""
+        return f'rgb("{escape_string_literal(str(value))}")'
+
+    def _table_header_fill_arg(self):
+        """table_header.backgroundが指定されていれば、#table()のfill:引数（1行目のみ着色）を返す。
+        未指定なら空文字列（従来どおり無装飾）。"""
+        background = self.table_header_style.get('background')
+        if not background:
+            return ''
+        return f',\n  fill: (col, row) => if row == 0 {{ {self._color_to_typst(background)} }} else {{ none }}'
+
+    def _table_header_open_close(self):
+        """table_header.bold/colorに応じた、ヘッダセルの開き/閉じラッパー文字列のペアを返す。
+        いずれも未指定なら空文字列（従来どおり無装飾）。スタイルはセル内で変化しないため、
+        th_open/th_closeそれぞれで独立に呼び出しても一貫した結果になる。"""
+        open_parts = []
+        close_parts = []
+        if self.table_header_style.get('bold'):
+            open_parts.append('#strong[')
+            close_parts.append(']')
+        color = self.table_header_style.get('color')
+        if color:
+            open_parts.append(f'#text(fill: {self._color_to_typst(color)})[')
+            close_parts.append(']')
+        return ''.join(open_parts), ''.join(reversed(close_parts))
 
 def deep_update(d, u):
     for k, v in u.items():
@@ -1036,10 +1073,12 @@ def _prepare_template(config, tool_dir, project_dir, work_dir, typst_root):
 
 def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
     """document:設定からtypst_codeの冒頭（テンプレートのimportとconf()呼び出し）を組み立てる。
-    戻り値は (preamble文字列, global_landscape, global_paper, cover_mode)。"""
+    戻り値は (preamble文字列, global_landscape, global_paper, cover_mode, global_table_header)。"""
     doc_config = config.get("document", {})
     global_landscape = str(doc_config.get('landscape', False)).lower() == 'true'
     global_paper = doc_config.get('paper_size', 'a4')
+    # 通常のMarkdownテーブルのヘッダ行スタイル（#45）。未指定なら従来どおり無装飾。
+    global_table_header = doc_config.get('table_header') or {}
 
     # 表紙の扱い: template=テンプレートの表紙のみ / replace=テンプレートの表紙でMarkdown先頭の
     # タイトルスライドを置き換える / markdown=Markdown側のみ / none=表紙なし
@@ -1083,7 +1122,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
 )
 
 """
-    return preamble, global_landscape, global_paper, cover_mode
+    return preamble, global_landscape, global_paper, cover_mode, global_table_header
 
 def _parse_chapter_entry(ch):
     """chaptersの1エントリを解析し、(ファイル/ディレクトリ名, 章固有設定のdict, 種別)を返す。
@@ -1162,13 +1201,21 @@ def _render_aggregate_chapter(ch_dict, ch_file, inputs_dir, renderer, current_la
     return typst_code, current_landscape, current_paper
 
 def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
-                              global_landscape, global_paper, is_first_chapter, cover_mode):
+                              global_landscape, global_paper, is_first_chapter, cover_mode, global_table_header):
     """通常のチャプター（Markdown/YAML/JSON/プレーンテキスト等、#15の拡張子ディスパッチ対象）を
     Typstへ変換する。戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper)。"""
     md_path = os.path.join(inputs_dir, ch_file)
     if not os.path.exists(md_path):
         print(f"[Error] Chapter file not found: {md_path}")
         sys.exit(1)
+
+    # テーブルヘッダのスタイル（#45）。chapters[].table_headerはdocument.table_headerに対する
+    # キー単位の上書き（chapters[].landscape/paper_sizeと同じ優先順位）。前後関係上、
+    # front-matterはrender_chapter()実行後にしかわからないため、front-matterでの上書きは
+    # サポートしない（#41以降、front-matterはlandscape/paper_size/font_sizeのみ反映する方針）。
+    ch_table_header = dict(global_table_header)
+    ch_table_header.update(ch_dict.get("table_header") or {})
+    renderer.table_header_style = ch_table_header
 
     with open(md_path, "r", encoding="utf-8") as f:
         md_text = f.read()
@@ -1250,7 +1297,7 @@ def build():
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
 
-    typst_code, global_landscape, global_paper, cover_mode = _build_document_preamble(
+    typst_code, global_landscape, global_paper, cover_mode, global_table_header = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled)
 
     renderer = TypstRenderer(project_dir, typst_root=typst_root,
@@ -1269,7 +1316,7 @@ def build():
             else:
                 fragment, current_landscape, current_paper = _render_markdown_chapter(
                     ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
-                    global_landscape, global_paper, is_first_chapter, cover_mode)
+                    global_landscape, global_paper, is_first_chapter, cover_mode, global_table_header)
             typst_code += fragment
             is_first_chapter = False
     finally:
