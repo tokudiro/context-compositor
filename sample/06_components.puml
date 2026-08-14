@@ -1,0 +1,11 @@
+@startuml
+class "build.py" as build {
+  +build()
+}
+class TypstRenderer {
+  +render_chapter()
+  +render_inline()
+}
+build --> TypstRenderer : uses
+TypstRenderer --> Typst : generates
+@enduml

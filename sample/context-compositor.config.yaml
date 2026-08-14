@@ -15,8 +15,8 @@ template:
 
 plugins:
   graphviz: true
-  plantuml: false
-  mermaid: false
+  plantuml: true
+  mermaid: true
 
 inputs:
   dir: "."
@@ -26,6 +26,9 @@ chapters:
   - "02_features.md"
   - file: "03_architecture.md"
     paper_size: "a4"  # 必要に応じてこの章だけa3等に変更可能
+  - "04_deployment.dot"    # 図表ソースファイルを直接chaptersに指定する例（#53）
+  - "05_workflow.mmd"
+  - "06_components.puml"
   - aggregate: "testcases"
     title: "システムテスト仕様書 (マトリクス)"
     landscape: true   # テーブルは横長になりやすいのでA4横を指定

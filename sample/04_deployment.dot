@@ -1,0 +1,13 @@
+digraph Deployment {
+  rankdir=TB;
+  node [shape=box, style=rounded, fontname="Yu Gothic"];
+
+  Dev [label="開発者"];
+  Repo [label="Git Repository"];
+  CI [label="GitHub Actions"];
+  PDF [label="PDF Artifact", shape=note];
+
+  Dev -> Repo [label=" push"];
+  Repo -> CI [label=" trigger"];
+  CI -> PDF [label=" build"];
+}

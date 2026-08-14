@@ -12,7 +12,7 @@ AIが生成し、人間が加筆・修正する複数のテキストファイル
 - ツール本体とドキュメント（原稿）を分離し、原稿はリポジトリ外の任意の場所に置ける
 - Python中心・最小限のダウンロードで完結し、外部サーバーやSaaSに依存しない（GitHub Actions上でも、Windows/Linux/macOSのローカルでも同じ手順で動く）
 
-`chapters`に列挙するファイルは拡張子で扱いが分かれます。`.md`/`.markdown`はMarkdownとして変換し、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にします（CSVを表として構造化する変換は未実装）。詳細は[使い方ガイド](doc/usage/)を参照してください。
+`chapters`に列挙するファイルは拡張子で扱いが分かれます。`.md`/`.markdown`はMarkdownとして変換し、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、`.dot`/`.gv`・`.mmd`・`.puml`/`.plantuml`/`.pu`はそれぞれGraphviz/Mermaid/PlantUMLの図として1章分描画し、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にします（CSVを表として構造化する変換は未実装）。詳細は[使い方ガイド](doc/usage/)を参照してください。
 
 ## 必要なもの
 
@@ -27,7 +27,7 @@ Typstコンパイラ本体はバイナリを同梱せず、上記の `pip instal
 
 ### Mermaid図を使う場合（任意）
 
-原稿の中で ` ```mermaid ` フェンスを使う場合のみ、追加で以下が必要です。
+原稿の中で ` ```mermaid ` フェンスを使う場合（または`.mmd`ファイルを`chapters`に直接指定する場合）のみ、追加で以下が必要です。
 
 ```bash
 pip install playwright==1.62.0
@@ -42,7 +42,7 @@ Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バン�
 
 ### PlantUML図を使う場合（任意）
 
-原稿の中で ` ```plantuml ` フェンスを使う場合、`config.yaml`側の追加設定は不要です（`plugins.plantuml`は既定`true`。追加の`pip install`も不要）。
+原稿の中で ` ```plantuml ` フェンスを使う場合（または`.puml`ファイルを`chapters`に直接指定する場合）、`config.yaml`側の追加設定は不要です（`plugins.plantuml`は既定`true`。追加の`pip install`も不要）。
 
 - ローカルにJava（11以上）があればそのまま再利用します
 - 無ければ既定でEclipse Temurin JRE（Adoptium配布、約49.7MB）を自動取得・キャッシュします（`tool_dir/.jre-cache/`）。`plugins: { plantuml_auto_download: false }` にすると、自動取得せずエラー終了に変えられます
