@@ -330,7 +330,10 @@ class TypstRenderer:
                 elif lang == 'mermaid':
                     result.append(self._render_mermaid(t.content))
                 else:
-                    result.append(f"```{lang}\n{t.content}```\n\n")
+                    # ```` ``` ````フェンス構文で直接組み立てると、コード内容自体に```が
+                    # 含まれる場合にTypst側のフェンスが早期に閉じて壊れる。文字列リテラルとして
+                    # 渡すraw()なら安全（#15の_render_raw_textと同じ理由）。
+                    result.append(self._render_raw_text(t.content, lang or None))
             elif t.type in ['html_inline', 'html_block']:
                 result.append(self._handle_html_token(t))
             elif t.type in ['th_open', 'td_open']:
