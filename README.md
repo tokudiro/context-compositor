@@ -2,7 +2,7 @@
 
 AIが生成し、人間が加筆・修正する複数のテキストファイルを、それぞれ独立した「コンテキスト」として扱い、1つの人間可読なPDF文書へ決定論的に組み上げる（compose）ツールです。
 
-詳細な設計方針・実装状況は [doc/specification.md](doc/specification.md) を参照してください。このREADMEは最短で使い始めるための要点のみを記載します。Quarto等の汎用ツールとの違いは [doc/diff.md](doc/diff.md) にまとめています。
+このREADMEは最短で使い始めるための要点のみを記載します。`config.yaml`や原稿の書き方を一通り知りたい場合は[使い方ガイド](doc/usage/)（`cd doc/usage && python ../../build.py` でPDF化もできます）を、詳細な設計方針・実装状況は [doc/specification.md](doc/specification.md) を参照してください。Quarto等の汎用ツールとの違いは [doc/diff.md](doc/diff.md) にまとめています。
 
 ## 特徴
 
@@ -41,7 +41,7 @@ cd my-project/
 python /path/to/context-compositor/build.py
 ```
 
-設定ファイルの書き方は [sample/context-compositor.config.yaml](sample/context-compositor.config.yaml) を参照してください。`chapters` に列挙したMarkdownファイルを順に結合してPDFを生成します。
+設定ファイルの書き方は [sample/context-compositor.config.yaml](sample/context-compositor.config.yaml) を、`document:`/`plugins:`/front-matter/Marpディレクティブ等の詳しい説明は[使い方ガイド](doc/usage/)を参照してください。`chapters` に列挙したMarkdownファイルを順に結合してPDFを生成します。
 
 ## サンプルを試す
 
