@@ -122,8 +122,13 @@ class TypstRenderer:
     # （ファイル内の任意の位置から「以降に持続する」という#16と同種の危険な性質を持つため）。
     DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:.*-->\s*$')
 
+    # GitHub Wiki拡張の用語索引記法（#47、#48）。[[用語]]の素の形のみ対応し、区切り記法
+    # （[[表示|ページ]]）は使い方が分かりにくいとして不採用（#48）。[[/]]は空にならないよう
+    # 中身を1文字以上必須にし、ネストした角括弧（通常の[link]記法との衝突）は対象外にする。
+    WIKILINK_RE = re.compile(r'\[\[([^\[\]]+)\]\]')
+
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
-                 plantuml_enabled=True, plantuml_auto_download=True, tool_dir=None):
+                 plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False, tool_dir=None):
         # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
         # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
         self.md = MarkdownIt("commonmark").enable("table").enable("strikethrough").use(tasklists_plugin)
@@ -160,6 +165,12 @@ class TypstRenderer:
         # _render_markdown_chapterが章ごとに設定する。bold/background/colorいずれも
         # 未指定なら従来どおり無装飾（キーが無ければ何もしない）。
         self.table_header_style = {}
+        # document.glossary: false（既定。#47）。falseなら[[用語]]は素の文字列としてそのまま通す
+        # （trueの場合のみWIKILINK_REで検出・登録する）。用語ごとの出現ラベルID一覧を、全チャプター
+        # を跨いで蓄積する（dict、Python 3.7+で挿入順を保持。ビルド末尾で巻末索引の生成に使う）。
+        self.glossary_enabled = glossary_enabled
+        self.glossary_terms = {}
+        self._glossary_label_counter = 0
         # plugins.plantuml: true（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
         # plantuml.jarで描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
         self.plantuml_enabled = plantuml_enabled
@@ -647,12 +658,45 @@ class TypstRenderer:
             text = self.BLOCK_HEAD_RE.sub(lambda m: m.group(1) + '\\' + m.group(2), text)
         return text
 
+    def _register_glossary_term(self, term):
+        """[[用語]]の1出現を登録し、Typstの#metadata(none)<gloss-N>ラベルを埋め込むコード片を
+        返す（#47）。metadata()は見た目に影響しない不可視要素で、目次のoutline()と同じ
+        「context+query()でレイアウト後にページ番号を取得する」パターンで巻末索引を組み立てる。"""
+        label_id = f"gloss-{self._glossary_label_counter}"
+        self._glossary_label_counter += 1
+        self.glossary_terms.setdefault(term, []).append(label_id)
+        return f'{self.escape_typst(term)}#metadata(none)<{label_id}>'
+
+    def _render_text_with_glossary(self, content, at_line_start):
+        """textトークンの中身から[[用語]]を検出して登録しつつ、それ以外は通常どおりエスケープする。
+        code_inline/fence等はrender_inlineに来ないtextトークンとして独立に処理されるため、
+        ここで正規表現置換してもコードブロックの中身を巻き込む心配はない。"""
+        parts = []
+        last_end = 0
+        first_segment = True
+        for m in self.WIKILINK_RE.finditer(content):
+            plain = content[last_end:m.start()]
+            if plain:
+                parts.append(self.escape_typst(plain, at_line_start=(at_line_start and first_segment)))
+                first_segment = False
+            term = m.group(1).strip()
+            parts.append(self._register_glossary_term(term))
+            first_segment = False
+            last_end = m.end()
+        remaining = content[last_end:]
+        if remaining or not parts:
+            parts.append(self.escape_typst(remaining, at_line_start=(at_line_start and first_segment)))
+        return "".join(parts)
+
     def render_inline(self, tokens):
         res = []
         at_line_start = True
         for t in tokens:
             if t.type == 'text':
-                res.append(self.escape_typst(t.content, at_line_start=at_line_start))
+                if self.glossary_enabled and '[[' in t.content:
+                    res.append(self._render_text_with_glossary(t.content, at_line_start))
+                else:
+                    res.append(self.escape_typst(t.content, at_line_start=at_line_start))
             elif t.type == 'strong_open':
                 res.append('#strong[')
             elif t.type == 'strong_close':
@@ -1048,6 +1092,45 @@ def _page_set_fragment(paper, landscape, header, footer, paginate):
     return (f'#set page(paper: "{paper}", flipped: {str(landscape).lower()}, '
             f'header: {header_expr}, footer: {footer_expr})\n')
 
+def _build_glossary_section(glossary_terms):
+    """document.glossary: trueの場合、全チャプター処理後にTypstRenderer.glossary_terms
+    （term -> [label_id, ...]）から巻末の用語索引ページを組み立てる（#47）。文字コード順
+    （Pythonのsorted()）で並べ、同じ用語の全出現ページ番号を重複除去のうえ昇順で列挙する。
+    定義文は持たない索引型（本の巻末索引と同じ形）。"""
+    entries = []
+    for term in sorted(glossary_terms.keys()):
+        label_ids = glossary_terms[term]
+        label_list = ", ".join(f'"{escape_string_literal(lbl)}"' for lbl in label_ids)
+        safe_term = escape_string_literal(term)
+        entries.append(f'  ("{safe_term}", ({label_list},)),')
+    entries_block = "\n".join(entries)
+
+    static_part = """
+#context {
+  for (term, label_ids) in __glossary_entries {
+    let pages = ()
+    for lbl in label_ids {
+      let found = query(label(lbl))
+      if found.len() > 0 {
+        pages.push(found.first().location().page())
+      }
+    }
+    pages = pages.sorted().dedup()
+    let page-str = pages.map(str).join(", ")
+    [#term #box(width: 1fr, repeat[.]) #page-str]
+    linebreak()
+  }
+}
+"""
+    return (
+        "\n#pagebreak(weak: true)\n"
+        "= 用語索引\n\n"
+        "#let __glossary_entries = (\n"
+        f"{entries_block}\n"
+        ")\n"
+        + static_part
+    )
+
 def extract_md_string(data, key):
     """YAMLからテキストを抽出。リスト形式の場合は改行で結合して単一文字列にする"""
     val = data.get(key, "")
@@ -1367,6 +1450,8 @@ def build():
     mermaid_auto_download = bool(plugins_config.get("mermaid_auto_download", False))
     plantuml_enabled = bool(plugins_config.get("plantuml", True))
     plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
+    # document.glossary: false（既定。#47）。trueなら[[用語]]を検出し、巻末に索引ページを生成する。
+    glossary_enabled = bool(config.get("document", {}).get("glossary", False))
 
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
@@ -1383,7 +1468,7 @@ def build():
     renderer = TypstRenderer(project_dir, typst_root=typst_root,
                               mermaid_enabled=mermaid_enabled, mermaid_auto_download=mermaid_auto_download,
                               plantuml_enabled=plantuml_enabled, plantuml_auto_download=plantuml_auto_download,
-                              tool_dir=tool_dir)
+                              glossary_enabled=glossary_enabled, tool_dir=tool_dir)
     current_landscape, current_paper = global_landscape, global_paper
     current_header, current_footer, current_paginate = effective_global_header, global_footer, global_paginate
     is_first_chapter = True
@@ -1414,6 +1499,10 @@ def build():
             global_landscape, global_paper, effective_global_header, global_footer, global_paginate):
         typst_code += _page_set_fragment(
             global_paper, global_landscape, effective_global_header, global_footer, global_paginate)
+
+    # 巻末の用語索引（#47）。全チャプター処理後、実際に[[用語]]が使われていた場合のみ追加する。
+    if glossary_enabled and renderer.glossary_terms:
+        typst_code += _build_glossary_section(renderer.glossary_terms)
 
     _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path)
 
