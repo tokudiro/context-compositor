@@ -8,8 +8,10 @@ import shutil
 import argparse
 import urllib.request
 import zipfile
+import tarfile
 import time
 import tempfile
+import platform
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
@@ -63,6 +65,29 @@ def find_system_browser():
             return found
     return None
 
+def find_system_java():
+    """PATH上のjavaコマンドを探し、PlantUML（最新版はJava 11+要求）を実行できるバージョンか
+    確認する。見つからない、またはバージョンが古い場合はNoneを返す（#22）。
+    見つかった場合はensure_temurin_jre()によるJRE取得を回避できる（2章の最小限のダウンロード）。"""
+    java_path = shutil.which("java")
+    if not java_path:
+        return None
+    try:
+        result = subprocess.run([java_path, "-version"], capture_output=True, text=True, timeout=10)
+    except OSError:
+        return None
+    # java -version は慣習的にstderrへ出力される（stdoutは空のことが多い）
+    output = result.stderr or result.stdout
+    m = re.search(r'version "([\d.]+)', output)
+    if not m:
+        return None
+    parts = m.group(1).split('.')
+    major = int(parts[0])
+    if major == 1 and len(parts) > 1:
+        # 旧来の "1.8.0_xxx" 形式（Java 8以前）。実質バージョンは2つ目の要素。
+        major = int(parts[1])
+    return java_path if major >= 11 else None
+
 class TypstRenderer:
     """
     markdown-it-py が生成したAST（構文木）を走査し、
@@ -90,7 +115,7 @@ class TypstRenderer:
     # 何も反映しない（#41、_handle_html_tokenを参照）。
     DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:.*-->\s*$')
 
-    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, tool_dir=None):
+    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, plantuml_enabled=False, tool_dir=None):
         self.md = MarkdownIt("commonmark").enable("table")
         self.list_stack = []
         self.current_file = ""
@@ -116,6 +141,14 @@ class TypstRenderer:
         self._mermaid_playwright = None
         self._mermaid_chrome_proc = None
         self._mermaid_profile_dir = None
+        # plugins.plantuml: false（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
+        # plantuml.jarで描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
+        self.plantuml_enabled = plantuml_enabled
+        self._plantuml_disabled_warned = False
+        # java実行ファイル・plantuml.jarのパスは初回の```plantuml描画時に遅延解決する
+        # （mermaidのヘッドレスブラウザと異なり常駐プロセスではないため、都度subprocessで起動する）。
+        self._plantuml_java_bin = None
+        self._plantuml_jar_path = None
 
     # 拡張子ごとの構造化データ言語（Typstのraw()に渡すシンタックスハイライト名）。
     # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
@@ -332,6 +365,8 @@ class TypstRenderer:
                     result.append(f"{t.content}\n\n")
                 elif lang == 'mermaid':
                     result.append(self._render_mermaid(t.content))
+                elif lang == 'plantuml':
+                    result.append(self._render_plantuml(t.content))
                 else:
                     # ```` ``` ````フェンス構文で直接組み立てると、コード内容自体に```が
                     # 含まれる場合にTypst側のフェンスが早期に閉じて壊れる。文字列リテラルとして
@@ -484,6 +519,58 @@ class TypstRenderer:
         # fit-image() は templates/slide.typ 側で定義されているため、image() の相対パス解決基準は
         # base_dir ではなく templates/ になってしまう。ファイルの置き場所に依存しない
         # ルート絶対パス（--root 起点の "/..." 形式）にして、どこから呼んでも解決できるようにする。
+        root_rel_path = escape_string_literal("/" + os.path.relpath(svg_path, self.typst_root).replace(os.sep, '/'))
+        return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
+
+    def _ensure_plantuml_tools(self):
+        """PlantUML実行に必要なjava実行ファイルとplantuml.jarを遅延解決する（初回のみ）。
+        システムJava（11+）があればそのまま再利用し（2章の最小限のダウンロード）、無ければ
+        Eclipse Temurin JREを自動取得する。mermaid/Chrome（#35）はFail-fastだが、こちらは
+        ユーザーの選択により自動取得を採用している（#22）。"""
+        if self._plantuml_java_bin is None:
+            java_bin = find_system_java()
+            if java_bin:
+                print(f"[Info] Reusing system Java for PlantUML rendering: {java_bin}")
+            else:
+                java_bin = ensure_temurin_jre(self.tool_dir)
+            self._plantuml_java_bin = java_bin
+        if self._plantuml_jar_path is None:
+            self._plantuml_jar_path = ensure_plantuml_jar(self.tool_dir)
+        return self._plantuml_java_bin, self._plantuml_jar_path
+
+    def _render_plantuml(self, code):
+        """```plantumlブロックをローカルのjava+plantuml.jar（Smetanaレイアウトエンジン。dot等の
+        外部バイナリに依存しない）でSVG化し、Typstのimage呼び出しに変換する。外部APIへの通信は
+        行わない（仕様書10章・11章、#22）。コードは実際のPlantUML構文どおり@startuml/@enduml
+        込みで書く必要がある（暗黙の補完はしない。9章の決定論的出力・明示性の方針に沿う）。"""
+        if not self.plantuml_enabled:
+            if not self._plantuml_disabled_warned:
+                print(f"[Info] plugins.plantuml is disabled; leaving ```plantuml fences as plain code (first seen in {self.current_file}).")
+                self._plantuml_disabled_warned = True
+            return f"```plantuml\n{code}```\n\n"
+
+        cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
+        svg_path = os.path.join(cache_dir, f"plantuml_{digest}.svg")
+
+        if not os.path.exists(svg_path):
+            print(f"[Info] Rendering PlantUML diagram via local Java -> {os.path.basename(svg_path)}")
+            java_bin, jar_path = self._ensure_plantuml_tools()
+            try:
+                result = subprocess.run(
+                    [java_bin, "-jar", jar_path, "-tsvg", "-pipe", "-Playout=smetana"],
+                    input=code, capture_output=True, text=True, encoding="utf-8", timeout=60)
+            except OSError as e:
+                print(f"[Error] Failed to run PlantUML for {self.current_file}:\n{e}")
+                sys.exit(1)
+            if result.returncode != 0:
+                # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
+                print(f"[Error] PlantUML rendering failed for {self.current_file}:\n{result.stderr}")
+                sys.exit(1)
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(result.stdout)
+
         root_rel_path = escape_string_literal("/" + os.path.relpath(svg_path, self.typst_root).replace(os.sep, '/'))
         return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
 
@@ -670,6 +757,130 @@ def ensure_mermaid_js(tool_dir):
         sys.exit(1)
 
     return js_path
+
+# ローカルにJava 11+が見つからない場合のみ取得するEclipse Temurin JRE（Adoptium配布、
+# GPLv2+Classpath Exception。OpenJDK本体と同じライセンス系統で安心度が高い）。CI
+# （GitHub Actions ubuntu-latest等）はJavaが標準搭載されているためこの取得は発生しない（#22）。
+# バージョン・プラットフォーム別にURL・SHA256を固定し、決定論的な取得結果にする（9章）。
+TEMURIN_JRE_RELEASE = "jdk-21.0.12+8"
+TEMURIN_JRE_BASE_URL = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/"
+TEMURIN_JRE_TOP_DIR = "jdk-21.0.12+8-jre"
+# キー: (sys.platform判定用キー, platform.machine()正規化キー)。
+# 値: (アーカイブファイル名, SHA256, アーカイブ形式, TEMURIN_JRE_TOP_DIR配下のjava実行ファイルへの相対パス)
+TEMURIN_JRE_ASSETS = {
+    ("win32", "x86_64"): ("OpenJDK21U-jre_x64_windows_hotspot_21.0.12_8.zip",
+                           "b8aa18fef5edb69bee8618f99677d66d0873d22cb40d974c15ac9ffcdecf73ba",
+                           "zip", ("bin", "java.exe")),
+    ("win32", "aarch64"): ("OpenJDK21U-jre_aarch64_windows_hotspot_21.0.12_8.zip",
+                            "a50ed83b6a88d3127d406713f5057d78f845c3412d59e201dac6db37714af85c",
+                            "zip", ("bin", "java.exe")),
+    ("linux", "x86_64"): ("OpenJDK21U-jre_x64_linux_hotspot_21.0.12_8.tar.gz",
+                           "8a379a67c91a3ae61ffb33d46e0a40c7ba35e70713c4db31cfca30492f792eff",
+                           "tar.gz", ("bin", "java")),
+    ("linux", "aarch64"): ("OpenJDK21U-jre_aarch64_linux_hotspot_21.0.12_8.tar.gz",
+                            "5f9c96b656827b9d14ebeda7739e25be554fa6d25669b03847c1df6e869c0679",
+                            "tar.gz", ("bin", "java")),
+    ("darwin", "x86_64"): ("OpenJDK21U-jre_x64_mac_hotspot_21.0.12_8.tar.gz",
+                            "539706197baea8189c9a677aea5bf44671b74a71baa42dde436e312f2158fa3a",
+                            "tar.gz", ("Contents", "Home", "bin", "java")),
+    ("darwin", "aarch64"): ("OpenJDK21U-jre_aarch64_mac_hotspot_21.0.12_8.tar.gz",
+                             "36bb71d6fa5184e12a6483e7662783c2cbd383f5dca8034140f0a84dd5aa797d",
+                             "tar.gz", ("Contents", "Home", "bin", "java")),
+}
+
+def _temurin_platform_key():
+    if sys.platform == "darwin":
+        os_key = "darwin"
+    elif sys.platform.startswith("linux"):
+        os_key = "linux"
+    else:
+        os_key = "win32"
+    machine = platform.machine().lower()
+    arch_key = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
+    return os_key, arch_key
+
+def ensure_temurin_jre(tool_dir):
+    """tool_dir/.jre-cache/ にEclipse Temurin JREが無ければダウンロード・展開する。java実行
+    ファイルの絶対パスを返す。2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで
+    完結する（find_system_java()でシステムJavaが見つからなかった場合のみ呼ばれる、#22）。"""
+    key = _temurin_platform_key()
+    asset = TEMURIN_JRE_ASSETS.get(key)
+    if asset is None:
+        print(f"[Error] No Eclipse Temurin JRE build available for this platform ({key[0]}/{key[1]}). "
+              "Install Java 11+ manually and ensure it is on PATH, or set plugins.plantuml: false.")
+        sys.exit(1)
+    filename, sha256, archive_type, java_rel_parts = asset
+
+    cache_root = os.path.join(tool_dir, ".jre-cache")
+    java_bin_path = os.path.join(cache_root, TEMURIN_JRE_TOP_DIR, *java_rel_parts)
+    if os.path.exists(java_bin_path):
+        return java_bin_path
+
+    os.makedirs(cache_root, exist_ok=True)
+    archive_path = os.path.join(cache_root, filename)
+    print(f"[Info] No local Java 11+ found; downloading Eclipse Temurin JRE {TEMURIN_JRE_RELEASE} "
+          "(one-time; cached under .jre-cache/)...")
+    try:
+        urllib.request.urlretrieve(TEMURIN_JRE_BASE_URL + filename, archive_path)
+    except OSError as e:
+        print(f"[Error] Failed to download Eclipse Temurin JRE: {e}")
+        sys.exit(1)
+
+    with open(archive_path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != sha256:
+        os.remove(archive_path)
+        print(f"[Error] Checksum mismatch for {filename}: expected {sha256}, got {digest}")
+        sys.exit(1)
+
+    if archive_type == "zip":
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(cache_root)
+    else:
+        with tarfile.open(archive_path, "r:gz") as tf:
+            tf.extractall(cache_root)
+    os.remove(archive_path)
+
+    if not os.path.exists(java_bin_path):
+        print(f"[Error] Eclipse Temurin JRE extraction did not produce the expected binary: {java_bin_path}")
+        sys.exit(1)
+    if key[0] != "win32":
+        os.chmod(java_bin_path, 0o755)
+
+    return java_bin_path
+
+# PlantUML本体（MIT版。GPL/LGPL/Apache/EPL版と機能差はDITAA等ごく一部のみで、UML図生成は
+# 100%対応。#22の調査でmit-light版はstdlib/クラウドアイコン素材と絵文字データのみが欠けることが
+# 分かったが、Markdown原稿（GitHub管理・AI生成）には絵文字が含まれ得るため、フル機能のmit版を
+# 採用する）。レイアウトエンジンはSmetana（純Java実装）を明示指定し、Graphviz(dot)実行ファイルへの
+# 依存を避ける（-Playout=smetana）。バージョン・SHA256を固定し、決定論的な取得結果にする（9章）。
+PLANTUML_JAR_URL = "https://github.com/plantuml/plantuml/releases/download/v1.2026.6/plantuml-mit-1.2026.6.jar"
+PLANTUML_JAR_SHA256 = "5814ab31dd569f3772747c3a0c1b52fd3bf2996b8132c62d17006d758c2d3fe3"
+
+def ensure_plantuml_jar(tool_dir):
+    """plantuml.jarがtool_dir/.plantuml-cache/になければダウンロードする。
+    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
+    cache_dir = os.path.join(tool_dir, ".plantuml-cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    jar_path = os.path.join(cache_dir, "plantuml-mit.jar")
+    if os.path.exists(jar_path):
+        return jar_path
+
+    print("[Info] Downloading plantuml.jar (one-time; cached under .plantuml-cache/)...")
+    try:
+        urllib.request.urlretrieve(PLANTUML_JAR_URL, jar_path)
+    except OSError as e:
+        print(f"[Error] Failed to download plantuml.jar: {e}")
+        sys.exit(1)
+
+    with open(jar_path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != PLANTUML_JAR_SHA256:
+        os.remove(jar_path)
+        print(f"[Error] Checksum mismatch for plantuml.jar: expected {PLANTUML_JAR_SHA256}, got {digest}")
+        sys.exit(1)
+
+    return jar_path
 
 def _launch_headless_chrome(browser_path, user_data_dir):
     """browser_pathをリモートデバッグ有効・ヘッドレスで起動し、(Popen, ポート番号)を返す。
@@ -990,12 +1201,11 @@ def build():
     project_dir, config, chapters = _load_project_config(args)
 
     # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
-    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは未実装のため既定で無効）。
+    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは重い依存関係を持つため既定で無効）。
     plugins_config = config.get("plugins") or {}
     graphviz_enabled = bool(plugins_config.get("graphviz", True))
     mermaid_enabled = bool(plugins_config.get("mermaid", True))
-    if plugins_config.get("plantuml", False):
-        print("[Warning] plugins.plantuml is enabled, but PlantUML rendering is not implemented yet; ```plantuml fences will be left as plain code.")
+    plantuml_enabled = bool(plugins_config.get("plantuml", False))
 
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
@@ -1003,7 +1213,8 @@ def build():
     typst_code, global_landscape, global_paper, cover_mode = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled)
 
-    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled, tool_dir=tool_dir)
+    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled,
+                              plantuml_enabled=plantuml_enabled, tool_dir=tool_dir)
     current_landscape, current_paper = global_landscape, global_paper
     is_first_chapter = True
 

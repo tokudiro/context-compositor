@@ -4,10 +4,10 @@
 plugins:
   graphviz: true    # 既定 true
   mermaid: false    # 既定 true
-  plantuml: false   # 未実装（trueにしても警告のみ）
+  plantuml: true    # 既定 false
 ```
 
-`false` にすると、該当する図表フェンス（`dot`/`graphviz`/`mermaid`言語のコードブロック）は描画せず、素のコード表示にフォールバックします。`mermaid: true` の場合のみ、`playwright`パッケージとシステムのChrome/Edgeが必要になります（詳細はREADME）。
+`false` にすると、該当する図表フェンス（`dot`/`graphviz`/`mermaid`/`plantuml`言語のコードブロック）は描画せず、素のコード表示にフォールバックします。`mermaid: true` の場合は `playwright`パッケージとシステムのChrome/Edgeが必要です。`plantuml: true` の場合はローカルのJava（11以上）が必要ですが、見つからなければEclipse Temurin JREを自動取得するため追加のインストール作業は不要です（詳細は「図表（Mermaid / Graphviz / PlantUML）」の章、README）。
 
 # inputs: 原稿ファイルの基準ディレクトリ
 

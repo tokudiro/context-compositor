@@ -3,6 +3,8 @@ __pycache__/
 .context-compositor/
 .fonts-cache/
 .mermaid-cache/
+.jre-cache/
+.plantuml-cache/
 config.yaml
 config.json
 sample/*.pdf
