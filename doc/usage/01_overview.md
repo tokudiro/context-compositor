@@ -1,6 +1,6 @@
 # 使い方ガイド
 
-`context-compositor` で `config.yaml` と原稿ファイルをどう書くかをまとめた実用ガイドです。導入手順（Pythonのセットアップ等）は `README.md` を、設計の背景や決定の経緯は `specification.md` を参照してください。
+`context-compositor` で `config.yaml` と原稿ファイルをどう書くかをまとめた実用ガイドです。導入手順（Pythonのセットアップ等）は `README.md` を、設計の背景や決定の経緯は `spec.md` を参照してください。
 
 このガイド自体、`context-compositor`で複数のMarkdownファイルを1冊のPDFに組み上げています（`doc/usage/` 配下）。
 

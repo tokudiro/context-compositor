@@ -2,7 +2,7 @@
 
 AIが生成し、人間が加筆・修正する複数のテキストファイルを、それぞれ独立した「コンテキスト」として扱い、1つの人間可読なPDF文書へ決定論的に組み上げる（compose）ツールです。
 
-このREADMEは最短で使い始めるための要点のみを記載します。`config.yaml`や原稿の書き方を一通り知りたい場合は[使い方ガイド](doc/usage/)（`cd doc/usage && python ../../build.py` でPDF化もできます）を、詳細な設計方針・実装状況は [doc/specification.md](doc/specification.md) を参照してください。Quarto等の汎用ツールとの違いは [doc/diff.md](doc/diff.md) にまとめています。
+このREADMEは最短で使い始めるための要点のみを記載します。`config.yaml`や原稿の書き方を一通り知りたい場合は[使い方ガイド](doc/usage/)（`cd doc/usage && python ../../build.py` でPDF化もできます）を、詳細な設計方針・実装状況は [doc/spec.md](doc/spec.md) を参照してください。Quarto等の汎用ツールとの違いは [doc/diff.md](doc/diff.md) にまとめています。
 
 ## 特徴
 
