@@ -101,6 +101,34 @@ class TypstRenderer:
         self.mermaid_enabled = mermaid_enabled
         self._mermaid_disabled_warned = False
 
+    # 拡張子ごとの構造化データ言語（Typstのraw()に渡すシンタックスハイライト名）。
+    # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
+    STRUCTURED_TEXT_LANGS = {'.yaml': 'yaml', '.yml': 'yaml', '.json': 'json'}
+
+    def render_chapter(self, text, filepath="", drop_leading_title=False):
+        """chaptersの1ファイルを拡張子に応じて変換する（1章、#15）。
+        .md/.markdown以外はmarkdown-itに一切通さない。素のテキストやYAML/JSON中の
+        行頭記号（#, -, [ 等）がMarkdown構文として誤解釈され、静かに壊れるのを防ぐため。"""
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext in ('.md', '.markdown'):
+            return self.render(text, filepath=filepath, drop_leading_title=drop_leading_title)
+
+        self.current_file = filepath
+        self.current_dir = os.path.dirname(os.path.abspath(filepath)) if filepath else self.base_dir
+        self.front_matter = {}
+        return self._render_raw_text(text, self.STRUCTURED_TEXT_LANGS.get(ext))
+
+    def _render_raw_text(self, text, lang=None):
+        """Markdown以外のテキスト（プレーンテキスト・コード・YAML/JSON等）を、markdown-itを一切
+        通さずTypstのraw()で等幅表示する。通常の段落として流し込むとTypstのテキストモードが
+        連続する空白を折りたたみ、コードのインデント等が失われるため、raw()で改行・空白とも
+        そのまま保持する。lang未指定時（プレーンテキスト・未知拡張子）はシンタックスハイライトなし。
+        ```` ``` ````フェンス構文だと本文中に```が含まれた場合に壊れるため、文字列リテラルとして渡す。"""
+        escaped = (text.replace('\\', '\\\\').replace('"', '\\"')
+                       .replace('\r\n', '\n').replace('\n', '\\n'))
+        lang_arg = f'lang: "{lang}", ' if lang else ''
+        return f'#raw("{escaped}", {lang_arg}block: true)\n\n'
+
     def render(self, text, filepath="", drop_leading_title=False):
         self.current_file = filepath
         self.current_dir = os.path.dirname(os.path.abspath(filepath)) if filepath else self.base_dir
@@ -761,7 +789,7 @@ def build():
             if os.path.exists(md_path):
                 with open(md_path, "r", encoding="utf-8") as f:
                     md_text = f.read()
-                chapter_typst = renderer.render(
+                chapter_typst = renderer.render_chapter(
                     md_text, filepath=md_path,
                     drop_leading_title=is_first_chapter and cover_mode in ('replace', 'none'))
                 font_size = renderer.front_matter.get('font_size')
