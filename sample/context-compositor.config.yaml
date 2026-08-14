@@ -11,7 +11,7 @@ output:
   dir: "."
 
 template:
-  path: "templates/template.typ"
+  path: "template"  # ツール同梱のtemplates/template.typ。独自テンプレートを使う場合は.typで終わるパスを指定する（例: "my_template.typ"）
 
 plugins:
   graphviz: true

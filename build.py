@@ -507,13 +507,24 @@ def default_config():
             "dir": "outputs"
         },
         "template": {
-            "path": "templates/template.typ"
+            "path": "template"
         },
         "inputs": {
             "dir": "inputs",
             "files": None
         }
     }
+
+def resolve_template_path(template_path_value, tool_dir, project_dir):
+    """template.pathを「名前」と「パス」で区別して解決する（5章、#23）。
+    拡張子(.typ)を含まない値（例: template, slide）は「名前」とみなし、ツール同梱の
+    tool_dir/templates/<name>.typ から解決する。.typで終わる値は「パス」とみなし、
+    他の相対パスと同じ規則（5章）でproject_dir基準で解決し、プロジェクト独自の
+    テンプレートを持ち込めるようにする（サブディレクトリの有無を問わない）。
+    絶対パスはos.path.joinの挙動によりそのまま使われる。"""
+    if template_path_value.endswith('.typ'):
+        return os.path.normpath(os.path.join(project_dir, template_path_value))
+    return os.path.join(tool_dir, "templates", template_path_value + ".typ")
 
 # CJKフォント(Noto Sans JP)の取得元。バイナリはリポジトリに同梱せず、初回ビルド時にのみ
 # ここから取得しtool_dir/.fonts-cache/に保存する（2章の「最小限のダウンロード」方針）。
@@ -641,9 +652,10 @@ def build():
     os.makedirs(work_dir, exist_ok=True)
 
     # 【修正】8章のセキュリティ要件（ツール本体のディレクトリを--rootにしない）を満たすため、
-    # tool_dirは--rootに含めない。テンプレートはtool_dir配下にあり#importでの参照が必要なため、
-    # work_dir（project_dir配下、--rootの内側）へコピーしてから、コピーの方を参照する。
-    template_abs_path = os.path.join(tool_dir, config["template"]["path"])
+    # tool_dirは--rootに含めない。テンプレートは元の置き場所（tool_dir配下 or project_dir配下）に
+    # 関わらず#importでの参照が必要なため、work_dir（project_dir配下、--rootの内側）へコピーして
+    # から、コピーの方を参照する。
+    template_abs_path = resolve_template_path(config["template"]["path"], tool_dir, project_dir)
     if not os.path.exists(template_abs_path):
         print(f"[Error] Template not found: {template_abs_path}")
         sys.exit(1)

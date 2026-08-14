@@ -59,9 +59,9 @@ python build.py --config <path/to/context-compositor.config.yaml>
 | --- | --- |
 | `config.yaml` 内のすべての相対パス（`chapters`, `inputs.dir`, `output.*`, `aggregate`） | その `config.yaml` が置かれたディレクトリ（`project_dir`） |
 | Markdown 内の画像・リンク先ファイル | その Markdown ファイルのディレクトリ |
-| `template.path`（実装時点） | 常にツール同梱 `templates/`（`tool_dir`）基準。プロジェクト側が独自テンプレートを持ち込む機能（名前とパスを区別して解決）は未実装（[#23](https://github.com/tokudiro/context-compositor/issues/23)）。 |
+| `template.path` | 値が`.typ`で終わらない「名前」（例: `template`, `slide`）はツール同梱`tool_dir/templates/<名前>.typ`基準。`.typ`で終わる「パス」（例: `my_template.typ`, `custom/my_template.typ`）は他の相対パスと同じ`project_dir`基準（プロジェクト独自テンプレート、[#23](https://github.com/tokudiro/context-compositor/issues/23)）。 |
 
-* **ドキュメントルート（`--root`）**: `project_dir`・実際の `inputs_dir`/`outputs_dir`・`work_dir`（`project_dir/.context-compositor`）の共通の親ディレクトリを動的に計算する。`tool_dir`（ツール本体のディレクトリ）は含めない。テンプレートは`tool_dir`配下にあるが、`build.py`がビルドのたびに`work_dir`へコピーしてからそのコピーを参照するため、`--root`を`tool_dir`まで広げる必要がない（8章のサンドボックス要件）。この結果、Markdown内の画像等が`project_dir`の外を参照している場合はビルドエラーになる。
+* **ドキュメントルート（`--root`）**: `project_dir`・実際の `inputs_dir`/`outputs_dir`・`work_dir`（`project_dir/.context-compositor`）の共通の親ディレクトリを動的に計算する。`tool_dir`（ツール本体のディレクトリ）は含めない。テンプレートは`tool_dir`配下・`project_dir`配下いずれの場合も、`build.py`がビルドのたびに`work_dir`へコピーしてからそのコピーを参照するため、`--root`を元のテンプレートの置き場所まで広げる必要がない（8章のサンドボックス要件）。この結果、Markdown内の画像等が`project_dir`の外を参照している場合はビルドエラーになる（テンプレート自体はPythonのファイルコピーで読むため、`project_dir`の外に置いても構わない）。
 * **設定ファイルの指定**: `--config` で明示するか、省略時はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（`tool_dir` は探索しない）。どちらもなければエラーで終了する。
 * **出力先**: `config.yaml` の `output.dir`/`output.filename` に従い `project_dir` 基準で決まる。入力パスからの出力先自動判定やCLIオプションでの上書きは未実装で、構想段階（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
