@@ -6,8 +6,9 @@ AIが生成し、人間が加筆・修正する複数のテキストファイル
 
 ## 特徴
 
-- 複数のMarkdownファイル（コンテキスト）を1冊のPDFに結合
+- 複数のテキストファイル（コンテキスト）を1冊のPDFに結合
 - Markdown → [markdown-it-py](https://github.com/executablebooks/markdown-it-py) でAST化 → [Typst](https://typst.app/) 構文へ決定論的に変換 → PDF出力
+- その他のテキストファイル → そのままPDF出力
 - ツール本体とドキュメント（原稿）を分離し、原稿はリポジトリ外の任意の場所に置ける
 - Python中心・最小限のダウンロードで完結し、外部サーバーやSaaSに依存しない（GitHub Actions上でも、Windows/Linux/macOSのローカルでも同じ手順で動く）
 
@@ -36,6 +37,16 @@ pip install playwright==1.62.0
 - 上記の `playwright` パッケージ（既存ブラウザへCDP接続するために使うだけで、Playwright自身のブラウザダウンロード機能は使わない）
 
 Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）を取得してヘッドレスブラウザに読み込ませ、SVGに変換します（バンドルJS自体は `tool_dir/.mermaid-cache/` に、変換結果は `.context-compositor/cache/` にキャッシュされ、次回以降は再取得しません）。Mermaidを使わない原稿ではこれらは一切不要です。
+
+### PlantUML図を使う場合（任意）
+
+原稿の中で ` ```plantuml ` フェンスを使う場合は `config.yaml` に `plugins: { plantuml: true }` を設定するだけです（追加の `pip install` は不要）。
+
+- ローカルにJava（11以上）があればそのまま再利用します
+- 無ければ初回ビルド時にEclipse Temurin JRE（Adoptium配布、約49.7MB）を自動取得・キャッシュします（`tool_dir/.jre-cache/`）
+- GitHub Actionsの`ubuntu-latest`にはJavaが標準搭載されているため、CI上では追加ダウンロードは発生しません
+
+レイアウトエンジンには純Java実装の Smetana を使うため、Graphviz（`dot`）等の外部バイナリは不要です。PlantUML本体（MIT版、約17.6MB）は `tool_dir/.plantuml-cache/` に、変換結果はMermaidと同じく `.context-compositor/cache/` にキャッシュされます。
 
 ## 使い方
 
