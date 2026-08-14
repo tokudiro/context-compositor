@@ -82,6 +82,7 @@
   if cover and title != none {
     set page(
       paper: paper_size,
+      flipped: landscape,
       margin: (x: 2cm, y: 1.5cm),
       header: none,
       footer: if cover_page_number { page-number-footer } else { none }
@@ -99,6 +100,7 @@
   // 本文のページ設定
   set page(
     paper: paper_size,
+    flipped: landscape,
     margin: (x: 2cm, y: 1.5cm),
     header: if header != none { render-header(header) } else { none },
     footer: render-footer(footer, paginate),
