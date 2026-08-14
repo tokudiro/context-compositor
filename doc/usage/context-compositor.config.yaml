@@ -8,7 +8,7 @@ document:
   cover: "template"
 
 output:
-  filename: "usage.pdf"
+  filename: "context-compositor-usage-guide.pdf"
   dir: "."
 
 template:

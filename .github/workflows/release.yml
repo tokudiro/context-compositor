@@ -33,4 +33,4 @@ jobs:
       - name: Attach PDF to release
         uses: softprops/action-gh-release@v2
         with:
-          files: doc/usage/usage.pdf
+          files: doc/usage/context-compositor-usage-guide.pdf
