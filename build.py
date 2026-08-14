@@ -115,7 +115,8 @@ class TypstRenderer:
     # 何も反映しない（#41、_handle_html_tokenを参照）。
     DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:.*-->\s*$')
 
-    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, plantuml_enabled=False, tool_dir=None):
+    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
+                 plantuml_enabled=True, plantuml_auto_download=True, tool_dir=None):
         self.md = MarkdownIt("commonmark").enable("table")
         self.list_stack = []
         self.current_file = ""
@@ -131,6 +132,11 @@ class TypstRenderer:
         # 描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
         self.mermaid_enabled = mermaid_enabled
         self._mermaid_disabled_warned = False
+        # plugins.mermaid_auto_download: false（既定。#22の設計議論を踏まえて追加）。システムに
+        # Chrome/Edgeが無い場合、falseならFail-fast（従来どおり）、trueならPlaywright自身の
+        # Chromiumをダウンロードして使う（実測約700MB。#34/#35で避けた重いダウンロードそのものなので
+        # 既定はfalseのまま。手元にどうしても持っていない場合の最後の手段として明示的に選ばせる）。
+        self.mermaid_auto_download = mermaid_auto_download
         # tool_dir: mermaid.min.jsのキャッシュ場所（tool_dir/.mermaid-cache/）の解決に使う（#35）。
         self.tool_dir = tool_dir or os.path.dirname(os.path.abspath(__file__))
         # Mermaidレンダリング用ヘッドレスブラウザのライフサイクル状態。最初のmermaid図を描画する
@@ -141,10 +147,15 @@ class TypstRenderer:
         self._mermaid_playwright = None
         self._mermaid_chrome_proc = None
         self._mermaid_profile_dir = None
-        # plugins.plantuml: false（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
+        # plugins.plantuml: true（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
         # plantuml.jarで描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
         self.plantuml_enabled = plantuml_enabled
         self._plantuml_disabled_warned = False
+        # plugins.plantuml_auto_download: true（既定）。システムにJava 11+が無い場合、trueなら
+        # Eclipse Temurin JREを自動取得（実測約49.7MB。Chromiumの約700MBと違い許容できる規模）、
+        # falseならFail-fast。mermaidと非対称な既定値なのは意図的（ダウンロードされる実体の
+        # サイズが1桁違うため。#22の設計議論を参照）。
+        self.plantuml_auto_download = plantuml_auto_download
         # java実行ファイル・plantuml.jarのパスは初回の```plantuml描画時に遅延解決する
         # （mermaidのヘッドレスブラウザと異なり常駐プロセスではないため、都度subprocessで起動する）。
         self._plantuml_java_bin = None
@@ -422,9 +433,11 @@ class TypstRenderer:
         """Mermaidレンダリング用のヘッドレスブラウザ・ページを遅延起動する（初回のみ）。
         Node.js/npxを介さず、mermaid.min.js（実測約3.4MB）を直接ヘッドレスブラウザへ読み込ませて
         mermaid.render()を呼ぶ（仕様書11章、#35。mermaid-cli丸ごとの約396MBを回避する）。
-        既存のシステムChrome/Edge（#34の検出ロジック）にPlaywrightのCDP接続で繋ぐだけなので、
-        ブラウザの追加ダウンロードは発生しない。見つからなければFail-fastでエラー終了する
-        （npm経由の代替ダウンロードは、npm/npxそのものに依存しなくなったため選択肢に無い）。"""
+        既存のシステムChrome/Edge（#34の検出ロジック）が見つかればPlaywrightのCDP接続で繋ぐだけで、
+        ブラウザの追加ダウンロードは発生しない。見つからない場合、plugins.mermaid_auto_downloadが
+        trueならPlaywright自身のChromium（実測約700MB）をその場で取得して使う。既定はfalseで、
+        Fail-fastでエラー終了する（#22の設計議論。700MBは#34/#35がまさに避けた規模のため、
+        既定で自動取得はしない）。"""
         if self._mermaid_page is not None:
             return self._mermaid_page
 
@@ -436,22 +449,38 @@ class TypstRenderer:
             sys.exit(1)
 
         browser_path = find_system_browser()
-        if not browser_path:
+        self._mermaid_playwright = sync_playwright().start()
+
+        if browser_path:
+            print(f"[Info] Reusing system browser for mermaid rendering: {browser_path}")
+            self._mermaid_profile_dir = tempfile.mkdtemp(prefix="cc-mermaid-")
+            self._mermaid_chrome_proc, port = _launch_headless_chrome(browser_path, self._mermaid_profile_dir)
+            try:
+                self._mermaid_browser = self._mermaid_playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+            except Exception as e:
+                print(f"[Error] Failed to connect to headless browser for mermaid rendering: {e}")
+                sys.exit(1)
+        elif self.mermaid_auto_download:
+            print("[Info] No system Chrome/Edge found; plugins.mermaid_auto_download is true, so Playwright "
+                  "will download its own Chromium (one-time; approx. 700MB; cached under Playwright's "
+                  "browser cache, typically ~/.cache/ms-playwright)...")
+            try:
+                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+            except (subprocess.CalledProcessError, OSError) as e:
+                print(f"[Error] Failed to download Playwright's Chromium: {e}")
+                sys.exit(1)
+            try:
+                self._mermaid_browser = self._mermaid_playwright.chromium.launch(headless=True)
+            except Exception as e:
+                print(f"[Error] Failed to launch the downloaded Chromium for mermaid rendering: {e}")
+                sys.exit(1)
+        else:
             print("[Error] No system Chrome/Edge found; required to render mermaid diagrams locally. "
-                  "Install Google Chrome or Microsoft Edge, or set plugins.mermaid: false.")
+                  "Install Google Chrome or Microsoft Edge, or set plugins.mermaid_auto_download: true "
+                  "(downloads Playwright's own Chromium, approx. 700MB), or set plugins.mermaid: false.")
             sys.exit(1)
-        print(f"[Info] Reusing system browser for mermaid rendering: {browser_path}")
 
         mermaid_js_path = ensure_mermaid_js(self.tool_dir)
-
-        self._mermaid_profile_dir = tempfile.mkdtemp(prefix="cc-mermaid-")
-        self._mermaid_chrome_proc, port = _launch_headless_chrome(browser_path, self._mermaid_profile_dir)
-        self._mermaid_playwright = sync_playwright().start()
-        try:
-            self._mermaid_browser = self._mermaid_playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
-        except Exception as e:
-            print(f"[Error] Failed to connect to headless browser for mermaid rendering: {e}")
-            sys.exit(1)
 
         context = self._mermaid_browser.contexts[0] if self._mermaid_browser.contexts else self._mermaid_browser.new_context()
         page = context.new_page()
@@ -524,15 +553,21 @@ class TypstRenderer:
 
     def _ensure_plantuml_tools(self):
         """PlantUML実行に必要なjava実行ファイルとplantuml.jarを遅延解決する（初回のみ）。
-        システムJava（11+）があればそのまま再利用し（2章の最小限のダウンロード）、無ければ
-        Eclipse Temurin JREを自動取得する。mermaid/Chrome（#35）はFail-fastだが、こちらは
-        ユーザーの選択により自動取得を採用している（#22）。"""
+        システムJava（11+）があればそのまま再利用する（2章の最小限のダウンロード）。無い場合、
+        plugins.plantuml_auto_download（既定true）ならEclipse Temurin JREを自動取得し、falseなら
+        Fail-fastでエラー終了する。mermaidのブラウザ自動取得（既定false）と非対称な既定値なのは、
+        ダウンロードされる実体のサイズが一桁違うため（JRE約49.7MB対Chromium約700MB。#22の設計議論）。"""
         if self._plantuml_java_bin is None:
             java_bin = find_system_java()
             if java_bin:
                 print(f"[Info] Reusing system Java for PlantUML rendering: {java_bin}")
-            else:
+            elif self.plantuml_auto_download:
                 java_bin = ensure_temurin_jre(self.tool_dir)
+            else:
+                print("[Error] No local Java 11+ found; required to render PlantUML diagrams. "
+                      "Install Java 11+, or set plugins.plantuml_auto_download: true "
+                      "(downloads Eclipse Temurin JRE, approx. 50MB), or set plugins.plantuml: false.")
+                sys.exit(1)
             self._plantuml_java_bin = java_bin
         if self._plantuml_jar_path is None:
             self._plantuml_jar_path = ensure_plantuml_jar(self.tool_dir)
@@ -1201,11 +1236,16 @@ def build():
     project_dir, config, chapters = _load_project_config(args)
 
     # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
-    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは重い依存関係を持つため既定で無効）。
+    # 維持する既定値（graphviz/mermaid/plantumlはいずれも常時有効）。
+    # *_auto_download は、システムに必要なツール（ブラウザ/Java）が無い場合の振る舞いを制御する
+    # 別軸のフラグ（#22の設計議論）。既定値が非対称なのは、ダウンロードされる実体のサイズが
+    # 一桁違うため（Playwright自身のChromium: 約700MB対Eclipse Temurin JRE: 約49.7MB）。
     plugins_config = config.get("plugins") or {}
     graphviz_enabled = bool(plugins_config.get("graphviz", True))
     mermaid_enabled = bool(plugins_config.get("mermaid", True))
-    plantuml_enabled = bool(plugins_config.get("plantuml", False))
+    mermaid_auto_download = bool(plugins_config.get("mermaid_auto_download", False))
+    plantuml_enabled = bool(plugins_config.get("plantuml", True))
+    plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
 
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
@@ -1213,8 +1253,10 @@ def build():
     typst_code, global_landscape, global_paper, cover_mode = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled)
 
-    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled,
-                              plantuml_enabled=plantuml_enabled, tool_dir=tool_dir)
+    renderer = TypstRenderer(project_dir, typst_root=typst_root,
+                              mermaid_enabled=mermaid_enabled, mermaid_auto_download=mermaid_auto_download,
+                              plantuml_enabled=plantuml_enabled, plantuml_auto_download=plantuml_auto_download,
+                              tool_dir=tool_dir)
     current_landscape, current_paper = global_landscape, global_paper
     is_first_chapter = True
 
