@@ -4,6 +4,13 @@ name: Release
 # そのタグのGitHub Releaseにアセットとして添付する（dogfooding、#31・#24）。
 # doc/usage/context-compositor.config.yaml は graphviz/mermaid とも無効なため、
 # Node.js/JRE等の追加ランタイムは不要でPython + pipのみで完結する（2章）。
+#
+# ツール（context-compositor）とドキュメント（doc/usage/）を、あえて同一コミットでも
+# 2回に分けてチェックアウトしている。doc/usage/12_github_actions.mdで案内している
+# 「別リポジトリとして使う」通常構成と全く同じ手順を踏むことで、リリースの度にその手順
+# 自体が壊れていないかを継続的に検証する（#24）。context-compositor側はrepository:を
+# 指定するだけでdefaultブランチ(master)を取得する（実際の外部利用でtagを固定しないのと
+# 同じ状況を再現し、最新のbuild.pyが既存のconfig.yamlと噛み合うかも同時に確認できる）。
 on:
   push:
     tags:
@@ -16,21 +23,28 @@ jobs:
   build-usage-guide:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout this repo (docs/config)
+        uses: actions/checkout@v4
+        with:
+          path: this-repo
+
+      - name: Checkout context-compositor (tool)
+        uses: actions/checkout@v4
+        with:
+          repository: tokudiro/context-compositor
+          path: context-compositor
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r context-compositor/requirements.txt
 
       - name: Build usage guide PDF
-        run: |
-          cd doc/usage
-          python ../../build.py
+        run: python context-compositor/build.py --config this-repo/doc/usage/context-compositor.config.yaml
 
       - name: Attach PDF to release
         uses: softprops/action-gh-release@v2
         with:
-          files: doc/usage/context-compositor-usage-guide.pdf
+          files: this-repo/doc/usage/context-compositor-usage-guide.pdf

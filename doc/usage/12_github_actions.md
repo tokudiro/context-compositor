@@ -2,7 +2,7 @@
 
 GitHub-hosted runner（`ubuntu-latest`等）には標準でGoogle Chromeが導入されている。`plugins.mermaid: true`を使うプロジェクトでも、ビルド時に既存のChromeを自動検出して再利用するため、追加のブラウザダウンロード（設定を誤ると発生しうる約699MB）は発生しない。
 
-## 通常の構成: ツールとドキュメントを別リポジトリのまま使う
+## ワークフロー例: ツールとドキュメントを別リポジトリのまま使う
 
 3章・8章の「ツール本体とドキュメントの分離」はGitHub Actions上でも成立する。`build.py`をドキュメント側リポジトリへコピー・同梱する必要はなく、`actions/checkout@v4`を2回使い、自分のリポジトリとcontext-compositorをそれぞれ別のディレクトリへチェックアウトすればよい（2回目は`repository:`パラメータでcontext-compositorを指定し、`path:`で別の場所に展開する。[#24](https://github.com/tokudiro/context-compositor/issues/24)で実証済み）。これがこのツールの通常の使い方であり、ドキュメント側リポジトリには原稿と`context-compositor.config.yaml`だけを置けばよい。
 
@@ -46,40 +46,7 @@ jobs:
 
 `build.py`本体やそのライセンス・バージョン管理を各ドキュメントリポジトリ側で意識する必要がない。context-compositorは公開リポジトリなので、`repository: tokudiro/context-compositor`と指定するだけで追加の認証設定（トークン等）なしにチェックアウトできる。
 
-## 例外構成: build.pyを自リポジトリに含める場合
-
-このツール自身の使い方ガイド（本書）のように、context-compositorのリポジトリ自身がドキュメントを持つ場合は、`build.py`を別途チェックアウトする必要はなく、通常の単一リポジトリのワークフローになる。
-
-```yaml
-name: Build Docs
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Build PDF
-        run: python build.py --config path/to/context-compositor.config.yaml
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pdf
-          path: path/to/output.pdf
-```
-
-`plugins.graphviz`のみを使うプロジェクトは、これだけで完結する（Node.js/JRE等の追加インストール不要）。
+`plugins.graphviz`のみを使うプロジェクトは、この構成だけで完結する（Node.js/JRE等の追加インストール不要）。
 
 ## Mermaidを使う場合の注意
 
@@ -88,7 +55,7 @@ jobs:
 ```yaml
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r context-compositor/requirements.txt
           pip install playwright==1.62.0
 ```
 
@@ -96,4 +63,4 @@ Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）は�
 
 ## リリース時にPDFをアセットとして添付する
 
-このツール自身の使い方ガイド（本書）は、`v*`タグのpushをトリガーにビルドし、GitHub Releaseへアセットとして添付している。設定例は `.github/workflows/release.yml` を参照。
+このツール自身の使い方ガイド（本書）は、`v*`タグのpushをトリガーにビルドし、GitHub Releaseへアセットとして添付している。同じリポジトリの中身であっても、あえて上記と同じ2回チェックアウトの構成でビルドしており、これによりリリースの度に「別リポジトリとして使う」構成そのものが壊れていないかを継続的に検証している。設定例は `.github/workflows/release.yml` を参照。
