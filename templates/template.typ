@@ -1,15 +1,3 @@
-// front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して反映する
-// 想定（#38）。このテンプレートは表示場所を持たないため何もしない（渡された値はそのまま無視する）。
-// 実際に表示するテンプレートの例は templates/template_with_chapter_meta.typ を参照。
-#let chapter-meta(title: none, subtitle: none, author: none, date: none, doc) = doc
-
-// Marpディレクティブ（<!-- header: X -->等）の値。以降のページに適用され、次の同種
-// ディレクティブまで有効（Marpと同じスコープ規則、7章、#16）。チャプター（ファイル）を
-// またいで持続する必要があるため、chapter-metaと同じくstate()で反応的に読む。
-#let cc-marp-header = state("cc-marp-header", none)
-#let cc-marp-footer = state("cc-marp-footer", none)
-#let cc-marp-paginate = state("cc-marp-paginate", true)
-
 // 幅・高さいずれかが利用可能領域をはみ出す場合だけ、縦横比を保って自動縮小する（mermaidなど事前レンダリング済み画像用）
 #let MAX_IMG_HEIGHT = 12cm
 #let fit-image(path) = layout(size => context {
@@ -106,35 +94,19 @@
   set page(
     paper: paper_size,
     flipped: landscape,
-    // ヘッダーはMarpのheaderディレクティブがあればそれを、無ければ文書全体のtitleを表示する
-    header: context {
-      let marp-header = cc-marp-header.get()
-      align(right)[
-        #text(8pt, fill: luma(100))[#if marp-header != none { marp-header } else { title }]
-        #v(0.5em)
-        #line(length: 100%, stroke: 0.5pt + luma(200))
-      ]
-    },
-    // フッターはMarpのfooterディレクティブが無ければ、従来どおりページ番号だけを中央に表示する。
-    // footerディレクティブがある場合のみ左にfooterテキスト・右にページ番号（paginateがtrueの間）を出す。
-    footer: context {
-      let marp-footer = cc-marp-footer.get()
-      let show-num = cc-marp-paginate.get()
-      if marp-footer == none {
-        if show-num { align(center)[#text(9pt)[#counter(page).display("1")]] } else { [] }
-      } else {
-        grid(
-          columns: (1fr, auto),
-          align(left)[#text(9pt, fill: luma(120))[#marp-footer]],
-          if show-num { align(right)[#text(9pt)[#counter(page).display("1")]] } else { [] }
-        )
-      }
-    }
+    header: align(right)[
+      #text(8pt, fill: luma(100))[#title]
+      #v(0.5em)
+      #line(length: 100%, stroke: 0.5pt + luma(200))
+    ],
+    footer: align(center)[
+      #text(9pt)[#context counter(page).display("1")]
+    ]
   )
   counter(page).update(1) // 本文のページ番号を 1 からリセット
-  
+
   set par(justify: true, leading: 0.8em)
-  
+
   // 見出し1 (大見出し/章) の直前で必ず改ページする（すでにページ先頭の場合はスキップ）
   show heading.where(level: 1): it => {
     pagebreak(weak: true)
@@ -142,6 +114,6 @@
     it
     v(0.5em)
   }
-  
+
   doc
 }

@@ -21,7 +21,6 @@ Markdownファイルの冒頭に `---` で囲んで書きます。
 font_size: 12pt
 paper_size: a3
 landscape: true
-title: "この章だけのタイトル"
 ---
 
 # 本文
@@ -31,7 +30,6 @@ title: "この章だけのタイトル"
 | --- | --- | --- |
 | `font_size` | そのファイル全体 | front-matterのみ |
 | `paper_size` / `landscape` | そのファイル全体 | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定 |
-| `title` | そのファイルのページのヘッダーのみ（文書全体の表紙には影響しない） | front-matter ＞ `document.title`（フォールバック） |
-| `subtitle` / `author` / `date` | そのファイルのページのみ（表示するかはテンプレート次第。同梱テンプレートは何も表示しない） | front-matterに無ければ何も表示しない |
+| `title` / `subtitle` / `author` / `date` | 認識はするが反映しない（読み捨てる） | — |
 
-`subtitle`/`author`/`date` を実際に画面に表示したい場合は、`template.path: "template_with_chapter_meta"` を使うか、独自テンプレートでそれらを表示する `chapter-meta()` を実装してください（「独自テンプレートを使う」の章）。
+`title`/`subtitle`/`author`/`date`は、Marp原稿との共用時にエラーや警告が出ないよう認識だけしていますが、実際には何も反映されません。文書全体のタイトル等は `document:` の設定（「document: 文書全体の設定」の章）で指定してください。

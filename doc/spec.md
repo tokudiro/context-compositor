@@ -32,7 +32,7 @@ context-compositor/                   my-project/
  ├── build.py                          ├── 01_intro.md
  ├── context-compositor.cmd # PATH に通す ├── 02_features.md
  ├── templates/      # 既定テンプレート  ├── 03_architecture.md          # 複数ファイルを1冊に結合
- └── doc/specification.md               ├── context-compositor.config.yaml # --config で指定（既定推奨名）
+ └── doc/spec.md                        ├── context-compositor.config.yaml # --config で指定（既定推奨名）
                                          ├── images/
                                          └── manual.pdf                  # 既定の出力先
 ```
@@ -78,12 +78,14 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 原稿は Marp 形式（`<!-- header: ... -->` ディレクティブ、`---` によるスライド区切り）で書かれている実績があるため、同一の Markdown が Marp でもこのツールでも通ることを要件とする。
 
-**方針の限界（意図的なスコープ）**: 「Marpでも通る」の対象は本章に明記した構造的な記法（ディレクティブ・front-matterの一部キー・`---`区切り）に限る。Marpの`theme:`/`class:`/`backgroundColor:`やカスタムCSS等の見た目に関わる指定は`MARP_ONLY_KEYS`として明示的に無視しており、対応する予定もない。**同一のMarkdownが両方で「通る」ことと、両方で「同じ見た目になる」ことは別**であり、後者は要件にしていない。理由は2つある。1つは、Marpの見た目はCSS前提でありTypstの組版モデルとは根本的に異なるため、変換の労力に対して得られる価値が薄いこと。もう1つは、Marpが「1ファイル=1デッキ」を前提にするのに対し、このツールは「複数ファイル=1文書」を核の設計にしているため（1章）、Marp機能を追いかけるほど本来不要な妥協（例: `header`/`footer`/`paginate`ディレクティブがチャプターをまたいで持続する必要が生じたこと、front-matterの`title`等をチャプター単位に閉じるよう意味を変えざるを得なかったこと）が積み重なること。今後Marpの新しい記法への対応を検討する際も、この2点を踏まえてスコープを都度判断すること。
+**方針の限界（意図的なスコープ）**: 「Marpでも通る」とは、Marp原稿を`chapters`にそのまま流し込んでもビルドが失敗したり不要な警告が出たりしない、という意味に限る。ディレクティブ・front-matterの一部キーの**値を実際に反映する**ことは要件にしていない（[#41](https://github.com/tokudiro/context-compositor/issues/41)）。Marpの`theme:`/`class:`/`backgroundColor:`やカスタムCSS等の見た目に関わる指定も`MARP_ONLY_KEYS`として同様に無視する。
 
-* **ディレクティブコメントの解釈**: `<!-- header: X -->` `<!-- footer: X -->` `<!-- paginate: true -->` を設定として取り込む（`X`はクォート有無どちらも可、`header`/`footer`は空文字`""`でクリア）。以降のページに適用され、次の同種ディレクティブまで有効（Marp と同じスコープ規則、[#16](https://github.com/tokudiro/context-compositor/issues/16)）。この持続はチャプター（ファイル）をまたぐため、`title`/`subtitle`/`author`/`date`（チャプター単位で閉じる、直下）とは異なりテンプレート側のstate（`cc-marp-header`/`cc-marp-footer`/`cc-marp-paginate`）で反映する。同梱の`templates/template.typ`・`templates/slide.typ`・`templates/template_with_chapter_meta.typ`はいずれも対応しており、`header`ディレクティブは`title`（`template_with_chapter_meta.typ`では`chapter-meta`由来のtitleも）より優先してページヘッダーに表示し、`footer`ディレクティブは左にfooterテキスト・右にページ番号（`paginate`がtrueの間）を表示する。未知のディレクティブ・非対応の値（例: `paginate: skip`）・その他の生のHTMLタグは、従来どおり行番号付きの警告にとどめ、ビルドは継続する。
+反映機能は`header`/`footer`/`paginate`ディレクティブ（[#16](https://github.com/tokudiro/context-compositor/issues/16)）とfront-matterの`title`/`subtitle`/`author`/`date`（[#38](https://github.com/tokudiro/context-compositor/issues/38)）について一度実装したが、撤回した（[#41](https://github.com/tokudiro/context-compositor/issues/41)）。理由は2つある。1つは、Marpの見た目はCSS前提でありTypstの組版モデルとは根本的に異なるため、変換の労力に対して得られる価値が薄いこと。もう1つ、こちらがより本質的だが、Marpが「1ファイル=1デッキ」を前提に「ディレクティブは以降のページに適用され、次の同種ディレクティブまで持続する」というスコープ規則を持つのに対し、このツールは「複数ファイル=1文書」を核の設計にしており（1章）、**章の並べ替えを安全に行えることが価値の核**である。ディレクティブがチャプター（ファイル）をまたいで持続する実装は、この並べ替えの安全性と正面から衝突する（あるチャプターを並べ替えると、意図しないヘッダーが別のチャプターに混入しうる）。今後Marpの新しい記法への対応や、上記2点を踏まえた別の反映方式を検討する際も、この経緯を踏まえること。
+
+* **ディレクティブコメントの解釈**: `<!-- header: X -->` `<!-- footer: X -->` `<!-- paginate: true -->` は認識するが、値は反映しない（読み捨てる）。認識しているため、他の生のHTMLタグ（`<br>`等）と違って警告は出さない。未知のディレクティブ・その他の生のHTMLタグは、従来どおり行番号付きの警告にとどめ、ビルドは継続する。
 * **front-matter**: 冒頭の `---` ブロックは水平線ではなく設定として扱う。認識済みキーは `title`/`subtitle`/`author`/`date`/`paper_size`/`landscape`/`font_size`（Marp固有キーの`marp:`/`theme:`等は無視、それ以外の未知キーは警告）。
   * `paper_size`/`landscape`は、`config.yaml`のチャプター個別設定（10章）より弱い優先順位で適用する。`chapters`の該当エントリに`paper_size`/`landscape`の明示指定が無い場合のみ、front-matterの値を使う（[#17](https://github.com/tokudiro/context-compositor/issues/17)）。
-  * `title`/`subtitle`/`author`/`date`は、**そのチャプターのページに限定して**反映する。文書全体の表紙（`document.title`等、6章）は常に`config.yaml`側のみが正であり、front-matterはここには一切影響しない。`title`はチャプターのページの見出しに渡され（front-matterに無ければ文書全体の`title`にフォールバックする）、`subtitle`/`author`/`date`はfront-matterに無ければそのチャプターには何も表示しない（[#38](https://github.com/tokudiro/context-compositor/issues/38)）。実際に何を・どこに表示するかはテンプレート側の`chapter-meta()`関数の裁量であり、同梱の`templates/template.typ`・`templates/slide.typ`は何もしない（値を受け取って無視するだけ）。`templates/template_with_chapter_meta.typ`が、ページヘッダーの章タイトル上書きと、見出し直下への`subtitle`/`author`/`date`バイライン表示を行う実装例（プロジェクト独自テンプレートも同じ関数を実装すれば同様に反映できる、5章・[#23](https://github.com/tokudiro/context-compositor/issues/23)）。
+  * `title`/`subtitle`/`author`/`date`は認識するが、値は反映しない（読み捨てる）。文書全体の表紙（`document.title`等、6章）は常に`config.yaml`側のみが正であり、front-matterはここには一切影響しない。
 * **`---` はページ区切り**（`#pagebreak()`）として扱う。ただしテンプレート側の「見出し直前で改ページ」と二重に効いて空ページが発生する既知の不具合があるため、連続する改ページは1つに畳み、原則 `#pagebreak(weak: true)` を用いる。
 * **表紙の二重化を避ける**: Marp のタイトルスライド（先頭の H1 と直後の H2）とテンプレートの表紙は同じ役割のため、両方出すと 1 枚目が重複する。`document.cover` で扱いを選べる。
   * `template`（既定）: テンプレートの表紙のみを出す。Markdown 側には手を入れない。
@@ -105,7 +107,8 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * **HTMLタグのフェイルファスト**: 無意識に混入したHTMLタグ（`<br>`等）をサイレントに無視すると事故につながるため、AST解析時にHTMLタグを検出した場合は行番号付きの警告（またはエラー）を出す（7章のディレクティブを除く）。
 
 ## 9. 変換パイプラインの基本方針
-* **Unixフィルタとしての設計は意図的に採用していない**: `build.py`は標準入力/標準出力で連鎖する小さなフィルタ群ではなく、`config.yaml`というマニフェストを読んで複数ファイルをオーケストレーションする単一プロセスである。これは複数コンテキストを1つの文書へ集約するという1章の核である目的そのものが、全入力を同時に見る必要がある（目次・章番号・Marpディレクティブの持続等）ためで、Pandocの複数ファイル結合や`make`と同様、集約系ツールでは一般的な形である。一方でMarpディレクティブ（7章、`<!-- header: X -->`等）がチャプター（ファイル）をまたいで持続する設計は、「1つのMarkdownファイルだけを見て1つのTypst断片を返す」という純粋な変換からは意図的に外れている。図表レンダリング（Mermaid/Graphviz、11章）やTypstコンパイル自体は専門ツールへの委譲（`npx mmdc`・`diagraph`・`typst`パッケージ）という形でフィルタ的な境界を保っている。
+* **Unixフィルタとしての設計は意図的に採用していない**: `build.py`は標準入力/標準出力で連鎖する小さなフィルタ群ではなく、`config.yaml`というマニフェストを読んで複数ファイルをオーケストレーションする単一プロセスである。これは複数コンテキストを1つの文書へ集約するという1章の核である目的そのものが、全入力を同時に見る必要がある（目次・章番号等）ためで、Pandocの複数ファイル結合や`make`と同様、集約系ツールでは一般的な形である。図表レンダリング（Mermaid/Graphviz、11章）やTypstコンパイル自体は専門ツールへの委譲（Playwright経由のCDP直接操作・`diagraph`・`typst`パッケージ）という形でフィルタ的な境界を保っている。
+  * かつてMarpディレクティブ（7章、`<!-- header: X -->`等）がチャプター（ファイル）をまたいで持続する機能を実装したことがあったが（[#16](https://github.com/tokudiro/context-compositor/issues/16)）、これは「1つのファイルだけを見て1つのTypst断片を返す」という純粋な変換から外れるだけでなく、このツールの核である**章の並べ替えの安全性**（並べ替えると意図しないヘッダーが混入しうる）とも衝突したため撤回した（[#41](https://github.com/tokudiro/context-compositor/issues/41)）。今後同種の「チャプターをまたいで持続する状態」を持つ機能を検討する際は、この失敗を踏まえること。
 * **ASTベースの変換**: Markdownを単なる文字列置換（正規表現等）で処理するとテーブル等で破綻しやすいため、`markdown-it-py` でAST（抽象構文木）を生成し、そこからTypst構文へ決定論的にマッピングする。
 * **特殊文字のエスケープ**: AI出力テキスト内のTypstマークアップと衝突する文字（`#`, `$`, `@`, `_`, `*`, `<`, `>`, `[`, `]` 等）は専用のエスケープ処理で必ず無害化する。
   * **行頭ブロック記法のエスケープ**: 行頭の `=` `-` `+` `/` `1.` は Typst の見出し・リスト等として解釈され、地の文が勝手に見出し化して目次にまで混入する。改行直後のテキストは行頭記号をエスケープする（実測で確認済みの実害）。

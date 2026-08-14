@@ -86,10 +86,9 @@ class TypstRenderer:
     LAYOUT_BLOCK_RE = re.compile(r'^::: *(layout-right|layout-compare) *\r?\n(.*?)\r?\n::: *\r?$', re.MULTILINE | re.DOTALL)
     MERMAID_FENCE_RE = re.compile(r'```mermaid\r?\n(.*?)\r?\n```', re.DOTALL)
 
-    # Marpディレクティブコメント。以降のページに適用され、次の同種ディレクティブまで有効
-    # （Marpと同じスコープ規則、7章、#16）。チャプター（ファイル）をまたいで持続する必要があるため、
-    # テンプレート側のstate()を介して反映する（#38のchapter-metaと同じ理由・同じ仕組み）。
-    DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:\s*(.*?)\s*-->\s*$')
+    # Marpディレクティブコメント。7章の要件（Marp原稿との共用）を満たすため認識はするが、
+    # 何も反映しない（#41、_handle_html_tokenを参照）。
+    DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:.*-->\s*$')
 
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, tool_dir=None):
         self.md = MarkdownIt("commonmark").enable("table")
@@ -176,11 +175,8 @@ class TypstRenderer:
         """通常のMarkdown断片をASTベースでTypstへ変換する（layout-rightブロックの前後の地の文用）"""
         self.list_stack = []
         tokens = self.md.parse(text)
-        if drop_leading_title:
-            start, directive_prefix = self._skip_leading_title(tokens)
-        else:
-            start, directive_prefix = 0, ""
-        return directive_prefix + self.render_tokens(tokens, start)
+        start = self._skip_leading_title(tokens) if drop_leading_title else 0
+        return self.render_tokens(tokens, start)
 
     def _render_layout_block(self, inner_text):
         """::: layout-right ... ::: ブロックを、左=テキスト／右=画像の2カラムgridへ変換する"""
@@ -232,15 +228,12 @@ class TypstRenderer:
         )
 
     def _skip_leading_title(self, tokens):
-        """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす。
-        戻り値は (以降を処理する開始インデックス, 読み飛ばした先頭のディレクティブが生成したTypstコード)。"""
+        """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす"""
         i = 0
         dropped = []
-        directive_prefix = []
-        # 先頭のHTMLコメント（Marpのディレクティブ等）は読み飛ばす。ディレクティブは取り込み、
-        # それ以外は従来どおり警告のみ
+        # 先頭のHTMLコメント（Marpのディレクティブ等）は読み飛ばす。ただし警告は従来どおり出す
         while i < len(tokens) and tokens[i].type in ['html_block', 'html_inline']:
-            directive_prefix.append(self._handle_html_token(tokens[i]))
+            self._handle_html_token(tokens[i])
             i += 1
         while i < len(tokens) and tokens[i].type == 'heading_open' and int(tokens[i].tag[1:]) <= 2:
             j = i
@@ -250,14 +243,12 @@ class TypstRenderer:
                 j += 1
             i = j + 1
         if not dropped:
-            # タイトルが見つからなかった場合、通常のrender_tokens(tokens, 0)で先頭から
-            # 処理し直すため、ここで集めたディレクティブの出力は使わない（二重発行防止）。
-            return 0, ""
+            return 0
         if i < len(tokens) and tokens[i].type == 'hr':
             i += 1
         # サイレントに本文を捨てないよう、取り除いた内容は必ずログに出す
         print(f"[Info] Cover: replaced the leading title slide of {self.current_file} ({' / '.join(dropped)})")
-        return i, "".join(directive_prefix)
+        return i
 
     def strip_front_matter(self, text):
         """冒頭のfront-matterを本文から除去し、設定として返す。行番号は空行で維持する"""
@@ -362,26 +353,16 @@ class TypstRenderer:
         print(f"[Warning] HTML tag detected at {self.current_file}:{line_no} : {t.content.strip()}. HTML is not supported and will be ignored in Typst output.")
 
     def _handle_html_token(self, t):
-        """MarpのディレクティブコメントはHTML警告を出さず、テンプレート側のstate経由で設定として
-        取り込む（7章、#16）。それ以外（未対応のディレクティブ・生のHTML）は従来どおり警告のみで
-        ビルドを継続する。"""
-        m = self.DIRECTIVE_RE.match(t.content.strip())
-        if not m:
-            self._warn_html(t)
+        """Marpのディレクティブコメント（<!-- header: X -->等）は、Marp原稿との共用時に不要な
+        警告が出ないよう認識はするが、何も反映しない（値を読み捨てる）。実際に反映する機能は
+        一度実装した（#16）が、チャプター（ファイル）をまたいで状態が持続する設計が、この
+        ツールの売りである「章の並べ替え」と衝突する（並べ替えると意図しないヘッダーが
+        混入しうる）ため撤回した（#41）。それ以外（未対応のディレクティブ・生のHTMLタグ）は
+        従来どおり警告のみでビルドを継続する。"""
+        if self.DIRECTIVE_RE.match(t.content.strip()):
             return ""
-        kind, raw_value = m.group(1), m.group(2)
-        if kind == 'paginate':
-            if raw_value not in ('true', 'false'):
-                self._warn_html(t)
-                return ""
-            return f"#cc-marp-paginate.update({raw_value})\n"
-        # header/footer: Marpの慣習に合わせ、値のクォート有無どちらも受け付ける
-        if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] == '"':
-            raw_value = raw_value[1:-1]
-        state_name = "cc-marp-header" if kind == "header" else "cc-marp-footer"
-        if raw_value == "":
-            return f"#{state_name}.update(none)\n"
-        return f'#{state_name}.update("{escape_string_literal(raw_value)}")\n'
+        self._warn_html(t)
+        return ""
 
     def _ends_with_newline(self, result):
         for s in reversed(result):
@@ -809,7 +790,7 @@ def _prepare_template(config, tool_dir, project_dir, work_dir, typst_root):
 
 def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
     """document:設定からtypst_codeの冒頭（テンプレートのimportとconf()呼び出し）を組み立てる。
-    戻り値は (preamble文字列, doc_config, global_landscape, global_paper, cover_mode)。"""
+    戻り値は (preamble文字列, global_landscape, global_paper, cover_mode)。"""
     doc_config = config.get("document", {})
     global_landscape = str(doc_config.get('landscape', False)).lower() == 'true'
     global_paper = doc_config.get('paper_size', 'a4')
@@ -843,7 +824,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
     safe_date = escape_string_literal(date_str)
 
     preamble = f"""
-#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, chapter-meta, cc-marp-header, cc-marp-footer, cc-marp-paginate
+#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",
@@ -856,7 +837,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
 )
 
 """
-    return preamble, doc_config, global_landscape, global_paper, cover_mode
+    return preamble, global_landscape, global_paper, cover_mode
 
 def _parse_chapter_entry(ch):
     """chaptersの1エントリを解析し、(ファイル/ディレクトリ名, 章固有設定のdict, 種別)を返す。
@@ -934,7 +915,7 @@ def _render_aggregate_chapter(ch_dict, ch_file, inputs_dir, renderer, current_la
 
     return typst_code, current_landscape, current_paper
 
-def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
+def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                               global_landscape, global_paper, is_first_chapter, cover_mode):
     """通常のチャプター（Markdown/YAML/JSON/プレーンテキスト等、#15の拡張子ディスパッチ対象）を
     Typstへ変換する。戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper)。"""
@@ -965,21 +946,11 @@ def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, doc_config,
     font_size = front_matter.get('font_size')
     if font_size:
         # スコープを#[...]で閉じ、このチャプターだけにフォントサイズ指定を適用する
-        chapter_typst = f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
-
-    # front-matterのtitle/subtitle/author/dateは、そのチャプターのページに限定して
-    # chapter-meta()経由で渡す（7章、#38）。文書全体の表紙はconfig.yaml側のみが正であり、
-    # front-matterはここでは一切影響しない。表示するかどうか（ヘッダー上書き・バイライン等）
-    # はテンプレート側の裁量（既定の2テンプレートは何もしない。templates/template_with_chapter_meta.typ
-    # が実装例）。titleは常に有効な値（front-matter優先、無ければ文書全体のtitle）を渡す
-    # （本文ページのヘッダーは常に何かを表示するものであり、noneにする理由が無いため）。
-    # subtitle/author/dateはfront-matterに無ければnoneのまま渡し、その章だけ何も表示させない。
-    effective_title = front_matter.get('title') or doc_config.get('title', 'Untitled')
-    meta_parts = [f'title: "{escape_string_literal(str(effective_title))}"']
-    for key in ('subtitle', 'author', 'date'):
-        value = front_matter.get(key)
-        meta_parts.append(f'{key}: "{escape_string_literal(str(value))}"' if value else f'{key}: none')
-    typst_code += f"#chapter-meta({', '.join(meta_parts)})[\n{chapter_typst}\n]\n"
+        typst_code += f"#[\n#set text(size: {font_size})\n{chapter_typst}\n]\n"
+    else:
+        typst_code += chapter_typst
+    # front-matterのtitle/subtitle/author/dateは認識はするが、何も反映しない（#41）。
+    # 文書全体の表紙（title/subtitle/author/date）は常にconfig.yaml側のみが正。
     typst_code += "\n#pagebreak(weak: true)\n"
 
     return typst_code, current_landscape, current_paper
@@ -1029,7 +1000,7 @@ def build():
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
 
-    typst_code, doc_config, global_landscape, global_paper, cover_mode = _build_document_preamble(
+    typst_code, global_landscape, global_paper, cover_mode = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled)
 
     renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled, tool_dir=tool_dir)
@@ -1044,7 +1015,7 @@ def build():
                     ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper, global_landscape, global_paper)
             else:
                 fragment, current_landscape, current_paper = _render_markdown_chapter(
-                    ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
+                    ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                     global_landscape, global_paper, is_first_chapter, cover_mode)
             typst_code += fragment
             is_first_chapter = False
