@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .context-compositor/
 .fonts-cache/
+.mermaid-cache/
 config.yaml
 config.json
 sample/*.pdf

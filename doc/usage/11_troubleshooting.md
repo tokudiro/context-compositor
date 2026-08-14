@@ -7,4 +7,5 @@
 | `Chapter file not found` | `chapters` に書いたファイル名が `inputs.dir` 配下に存在しない |
 | `Image not found` | Markdown内で参照している画像がそのMarkdownファイルからの相対パスで見つからない |
 | `'typst-exec' is allowed only under a 'reviewed/' directory` | `typst-exec`ブロックを `reviewed/` 配下以外のファイルで使った |
-| `'npx' (Node.js) not found in PATH` | Mermaid図があるのにNode.jsが未インストール |
+| `The 'playwright' package is required for mermaid rendering` | Mermaid図があるのに`playwright`パッケージが未インストール（`pip install playwright==1.62.0`） |
+| `No system Chrome/Edge found` | Mermaid図があるのにChrome/Edgeが未インストール |

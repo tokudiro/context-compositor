@@ -8,6 +8,8 @@ import shutil
 import argparse
 import urllib.request
 import zipfile
+import time
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
@@ -21,8 +23,8 @@ except ImportError:
     yaml = None
 
 # ローカル環境やGitHub Actionsランナー(ubuntu-latest)に標準搭載されているChrome/Edgeの
-# インストール先候補。見つかればPUPPETEER_EXECUTABLE_PATHに指定し、Puppeteerによる
-# Chromiumの自動ダウンロード（実測699MB。#34）を回避する（仕様書11章）。
+# インストール先候補。見つかればmermaidレンダリング用にそのまま起動して再利用し、
+# ブラウザの自動ダウンロード（実測699MB。#34）を回避する（仕様書11章、#35）。
 SYSTEM_BROWSER_PATHS = {
     "win32": [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -89,7 +91,7 @@ class TypstRenderer:
     # テンプレート側のstate()を介して反映する（#38のchapter-metaと同じ理由・同じ仕組み）。
     DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:\s*(.*?)\s*-->\s*$')
 
-    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True):
+    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, tool_dir=None):
         self.md = MarkdownIt("commonmark").enable("table")
         self.list_stack = []
         self.current_file = ""
@@ -101,10 +103,20 @@ class TypstRenderer:
         self.typst_root = typst_root or os.path.dirname(self.base_dir)
         self.allow_exec = False
         self.front_matter = {}
-        # plugins.mermaid: false（6章、#21）。falseなら```mermaidフェンスをmmdcで描画せず、
-        # 他の未対応言語と同じく素のコード表示にフォールバックする。
+        # plugins.mermaid: false（6章、#21）。falseなら```mermaidフェンスをヘッドレスブラウザで
+        # 描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
         self.mermaid_enabled = mermaid_enabled
         self._mermaid_disabled_warned = False
+        # tool_dir: mermaid.min.jsのキャッシュ場所（tool_dir/.mermaid-cache/）の解決に使う（#35）。
+        self.tool_dir = tool_dir or os.path.dirname(os.path.abspath(__file__))
+        # Mermaidレンダリング用ヘッドレスブラウザのライフサイクル状態。最初のmermaid図を描画する
+        # ときに遅延起動し、ビルド終了時にclose()で片付ける（複数の図で1つのブラウザ・ページを
+        # 使い回し、図ごとに起動し直さない）。
+        self._mermaid_page = None
+        self._mermaid_browser = None
+        self._mermaid_playwright = None
+        self._mermaid_chrome_proc = None
+        self._mermaid_profile_dir = None
 
     # 拡張子ごとの構造化データ言語（Typstのraw()に渡すシンタックスハイライト名）。
     # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
@@ -390,12 +402,75 @@ class TypstRenderer:
         root_rel_path = "/" + os.path.relpath(abs_path, self.typst_root).replace(os.sep, '/')
         return escape_string_literal(root_rel_path)
 
+    def _ensure_mermaid_page(self):
+        """Mermaidレンダリング用のヘッドレスブラウザ・ページを遅延起動する（初回のみ）。
+        Node.js/npxを介さず、mermaid.min.js（実測約3.4MB）を直接ヘッドレスブラウザへ読み込ませて
+        mermaid.render()を呼ぶ（仕様書11章、#35。mermaid-cli丸ごとの約396MBを回避する）。
+        既存のシステムChrome/Edge（#34の検出ロジック）にPlaywrightのCDP接続で繋ぐだけなので、
+        ブラウザの追加ダウンロードは発生しない。見つからなければFail-fastでエラー終了する
+        （npm経由の代替ダウンロードは、npm/npxそのものに依存しなくなったため選択肢に無い）。"""
+        if self._mermaid_page is not None:
+            return self._mermaid_page
+
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("[Error] The 'playwright' package is required for mermaid rendering (plugins.mermaid: true). "
+                  "Install it with: pip install playwright==1.62.0")
+            sys.exit(1)
+
+        browser_path = find_system_browser()
+        if not browser_path:
+            print("[Error] No system Chrome/Edge found; required to render mermaid diagrams locally. "
+                  "Install Google Chrome or Microsoft Edge, or set plugins.mermaid: false.")
+            sys.exit(1)
+        print(f"[Info] Reusing system browser for mermaid rendering: {browser_path}")
+
+        mermaid_js_path = ensure_mermaid_js(self.tool_dir)
+
+        self._mermaid_profile_dir = tempfile.mkdtemp(prefix="cc-mermaid-")
+        self._mermaid_chrome_proc, port = _launch_headless_chrome(browser_path, self._mermaid_profile_dir)
+        self._mermaid_playwright = sync_playwright().start()
+        try:
+            self._mermaid_browser = self._mermaid_playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        except Exception as e:
+            print(f"[Error] Failed to connect to headless browser for mermaid rendering: {e}")
+            sys.exit(1)
+
+        context = self._mermaid_browser.contexts[0] if self._mermaid_browser.contexts else self._mermaid_browser.new_context()
+        page = context.new_page()
+        page.set_content("<div id='container'></div>")
+        with open(mermaid_js_path, "r", encoding="utf-8") as f:
+            page.add_script_tag(content=f.read())
+        # Typstのraw SVGレンダラーは<foreignObject>内のHTMLを描画できないため、mermaid既定の
+        # HTMLラベルを無効化し、通常のSVG<text>要素で出力させる（トップレベルとflowchart配下
+        # 両方に指定する必要がある。PoCで確認済み）
+        page.evaluate("mermaid.initialize({ startOnLoad: false, htmlLabels: false, flowchart: { htmlLabels: false } })")
+        self._mermaid_page = page
+        return page
+
+    def close(self):
+        """ビルド終了時に呼び出し、_ensure_mermaid_pageで起動したヘッドレスブラウザを片付ける
+        （mermaidを一度も描画していなければ何もしない）。"""
+        if self._mermaid_browser is not None:
+            try:
+                self._mermaid_browser.close()
+            except Exception:
+                pass
+        if self._mermaid_playwright is not None:
+            self._mermaid_playwright.stop()
+        if self._mermaid_chrome_proc is not None:
+            self._mermaid_chrome_proc.terminate()
+            try:
+                self._mermaid_chrome_proc.wait(timeout=5)
+            except Exception:
+                self._mermaid_chrome_proc.kill()
+        if self._mermaid_profile_dir and os.path.exists(self._mermaid_profile_dir):
+            shutil.rmtree(self._mermaid_profile_dir, ignore_errors=True)
+
     def _render_mermaid(self, code):
-        """mermaidブロックをmmdc(@mermaid-js/mermaid-cli)でSVG化し、Typstのimage呼び出しに変換する。
-        外部APIへの通信は行わず、ローカルのmmdc/Puppeteerで完結させる（仕様書10章）。
-        既存のChrome/Edgeが見つかればPUPPETEER_EXECUTABLE_PATHで明示指定し、Puppeteerによる
-        ブラウザの自動ダウンロードを回避する。見つからない場合のみ、フルChrome(約428MB)ではなく
-        軽量なchrome-headless-shell(約272MB)だけを取得するフォールバックへ切り替える（仕様書11章、#34）。"""
+        """mermaidブロックをヘッドレスブラウザ上のmermaid.render()でSVG化し、Typstのimage呼び出しに
+        変換する。外部APIへの通信は行わず、ローカルのブラウザで完結させる（仕様書10章・11章、#35）。"""
         if not self.mermaid_enabled:
             if not self._mermaid_disabled_warned:
                 print(f"[Info] plugins.mermaid is disabled; leaving ```mermaid fences as plain code (first seen in {self.current_file}).")
@@ -408,47 +483,22 @@ class TypstRenderer:
         svg_path = os.path.join(cache_dir, f"mermaid_{digest}.svg")
 
         if not os.path.exists(svg_path):
-            npx = shutil.which("npx")
-            if not npx:
-                print(f"[Error] 'npx' (Node.js) not found in PATH; required to render a mermaid diagram in {self.current_file}.")
+            print(f"[Info] Rendering mermaid diagram via headless browser -> {os.path.basename(svg_path)}")
+            page = self._ensure_mermaid_page()
+            try:
+                svg = page.evaluate(
+                    """async ([id, code]) => {
+                        const { svg } = await mermaid.render(id, code);
+                        return svg;
+                    }""",
+                    [f"mermaid-{digest}", code],
+                )
+            except Exception as e:
+                # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
+                print(f"[Error] mermaid rendering failed for {self.current_file}:\n{e}")
                 sys.exit(1)
-            mmd_path = os.path.join(cache_dir, f"mermaid_{digest}.mmd")
-            with open(mmd_path, "w", encoding="utf-8") as f:
-                f.write(code)
-            # Typstのraw SVGレンダラーは<foreignObject>内のHTMLを描画できないため、
-            # mermaid既定のHTMLラベルを無効化し、通常のSVG<text>要素で出力させる
-            mmdc_config_path = os.path.join(cache_dir, "mmdc_config.json")
-            if not os.path.exists(mmdc_config_path):
-                with open(mmdc_config_path, "w", encoding="utf-8") as f:
-                    json.dump({"flowchart": {"htmlLabels": False}, "htmlLabels": False}, f)
-
-            env = os.environ.copy()
-            puppeteer_args = []
-            browser_path = find_system_browser()
-            if browser_path:
-                # 本命: 既存ブラウザを再利用し、ダウンロードを完全にゼロにする
-                env["PUPPETEER_EXECUTABLE_PATH"] = browser_path
-                env["PUPPETEER_SKIP_DOWNLOAD"] = "true"
-                print(f"[Info] Reusing system browser for mermaid rendering: {browser_path}")
-            else:
-                # フォールバック: フルChromeは取得せず、軽量なchrome-headless-shellだけを使う
-                env["PUPPETEER_SKIP_CHROME_DOWNLOAD"] = "true"
-                puppeteer_config_path = os.path.join(cache_dir, "mmdc_puppeteer_config.json")
-                with open(puppeteer_config_path, "w", encoding="utf-8") as f:
-                    json.dump({"headless": "shell"}, f)
-                puppeteer_args = ["-p", puppeteer_config_path]
-                print("[Info] No system browser found; downloading chrome-headless-shell only (not full Chrome).")
-
-            print(f"[Info] Rendering mermaid diagram via mmdc -> {os.path.basename(svg_path)}")
-            result = subprocess.run(
-                [npx, "-y", "-p", "@mermaid-js/mermaid-cli", "mmdc",
-                 "-i", mmd_path, "-o", svg_path, "-b", "transparent",
-                 "-c", mmdc_config_path] + puppeteer_args,
-                capture_output=True, text=True, env=env)
-            # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
-            if result.returncode != 0 or not os.path.exists(svg_path):
-                print(f"[Error] mermaid rendering failed for {self.current_file}:\n{result.stderr}")
-                sys.exit(1)
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(svg)
 
         # fit-image() は templates/slide.typ 側で定義されているため、image() の相対パス解決基準は
         # base_dir ではなく templates/ になってしまう。ファイルの置き場所に依存しない
@@ -607,6 +657,65 @@ def ensure_fonts(tool_dir):
             os.remove(zip_path)
 
     return font_dir
+
+# Mermaid公式配布の単一バンドルJS（UMD形式、全図種込み）。mermaid-cli丸ごと（npm依存ツリー約396MB）
+# ではなくこのファイル単体（実測約3.4MB）だけを取得し、Playwright経由でヘッドレスブラウザに
+# 読み込ませてmermaid.render()を直接呼び出す（仕様書11章、#35）。バージョン・SHA256を固定し、
+# Noto Sans JPと同様に決定論的な取得結果にする（9章）。
+MERMAID_JS_URL = "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js"
+MERMAID_JS_SHA256 = "18327bef70d96fb505fe7287d9f6a7362ebf07ff6576ddfaffb1a06f3e1a2954"
+
+def ensure_mermaid_js(tool_dir):
+    """mermaid.min.jsが tool_dir/.mermaid-cache/ になければダウンロードする。
+    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
+    cache_dir = os.path.join(tool_dir, ".mermaid-cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    js_path = os.path.join(cache_dir, "mermaid.min.js")
+    if os.path.exists(js_path):
+        return js_path
+
+    print("[Info] Downloading mermaid.min.js (one-time; cached under .mermaid-cache/)...")
+    try:
+        urllib.request.urlretrieve(MERMAID_JS_URL, js_path)
+    except OSError as e:
+        print(f"[Error] Failed to download mermaid.min.js: {e}")
+        sys.exit(1)
+
+    with open(js_path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != MERMAID_JS_SHA256:
+        os.remove(js_path)
+        print(f"[Error] Checksum mismatch for mermaid.min.js: expected {MERMAID_JS_SHA256}, got {digest}")
+        sys.exit(1)
+
+    return js_path
+
+def _launch_headless_chrome(browser_path, user_data_dir):
+    """browser_pathをリモートデバッグ有効・ヘッドレスで起動し、(Popen, ポート番号)を返す。
+    ポートは0（OSに自動割当させる）を指定し、Chromeがuser_data_dir/DevToolsActivePortに
+    書き出す実際のポートを読み取る（固定ポートによる競合を避けるため）。"""
+    os.makedirs(user_data_dir, exist_ok=True)
+    port_file = os.path.join(user_data_dir, "DevToolsActivePort")
+    if os.path.exists(port_file):
+        os.remove(port_file)
+
+    proc = subprocess.Popen(
+        [browser_path, "--remote-debugging-port=0", "--headless=new", "--disable-gpu",
+         "--no-first-run", f"--user-data-dir={user_data_dir}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    for _ in range(80):
+        if os.path.exists(port_file):
+            with open(port_file, "r", encoding="utf-8") as f:
+                port = int(f.readline().strip())
+            return proc, port
+        if proc.poll() is not None:
+            break
+        time.sleep(0.25)
+
+    proc.terminate()
+    print("[Error] Headless browser did not become ready in time (needed for mermaid rendering).")
+    sys.exit(1)
 
 def load_config_file(config_path):
     """指定された1ファイル(yaml/json)から設定を読み込む。存在しなければFail-fast。"""
@@ -923,21 +1032,25 @@ def build():
     typst_code, doc_config, global_landscape, global_paper, cover_mode = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled)
 
-    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled)
+    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled, tool_dir=tool_dir)
     current_landscape, current_paper = global_landscape, global_paper
     is_first_chapter = True
 
-    for ch in chapters:
-        ch_file, ch_dict, ch_type = _parse_chapter_entry(ch)
-        if ch_type == "aggregate":
-            fragment, current_landscape, current_paper = _render_aggregate_chapter(
-                ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper, global_landscape, global_paper)
-        else:
-            fragment, current_landscape, current_paper = _render_markdown_chapter(
-                ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
-                global_landscape, global_paper, is_first_chapter, cover_mode)
-        typst_code += fragment
-        is_first_chapter = False
+    try:
+        for ch in chapters:
+            ch_file, ch_dict, ch_type = _parse_chapter_entry(ch)
+            if ch_type == "aggregate":
+                fragment, current_landscape, current_paper = _render_aggregate_chapter(
+                    ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper, global_landscape, global_paper)
+            else:
+                fragment, current_landscape, current_paper = _render_markdown_chapter(
+                    ch_dict, ch_file, inputs_dir, renderer, doc_config, current_landscape, current_paper,
+                    global_landscape, global_paper, is_first_chapter, cover_mode)
+            typst_code += fragment
+            is_first_chapter = False
+    finally:
+        # mermaidレンダリング用に起動したヘッドレスブラウザを、エラー終了時も含め必ず片付ける（#35）。
+        renderer.close()
 
     if current_landscape != global_landscape or current_paper != global_paper:
         typst_code += f'#set page(paper: "{global_paper}", flipped: {str(global_landscape).lower()})\n'

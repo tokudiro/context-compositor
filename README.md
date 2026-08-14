@@ -11,7 +11,7 @@ AIが生成し、人間が加筆・修正する複数のテキストファイル
 - ツール本体とドキュメント（原稿）を分離し、原稿はリポジトリ外の任意の場所に置ける
 - Python中心・最小限のダウンロードで完結し、外部サーバーやSaaSに依存しない（GitHub Actions上でも、Windows/Linux/macOSのローカルでも同じ手順で動く）
 
-現時点での対応フォーマットはMarkdownのみですが、将来的にプレーンテキストやYAML/JSON/CSV等のテキストファイル全般への対応を想定しています。
+`chapters`に列挙するファイルは拡張子で扱いが分かれます。`.md`/`.markdown`はMarkdownとして変換し、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にします（CSVを表として構造化する変換は未実装）。詳細は[使い方ガイド](doc/usage/)を参照してください。
 
 ## 必要なもの
 
@@ -26,7 +26,16 @@ Typstコンパイラ本体はバイナリを同梱せず、上記の `pip instal
 
 ### Mermaid図を使う場合（任意）
 
-原稿の中で ` ```mermaid ` フェンスを使う場合のみ、追加で **Node.js**（`npx` コマンド）が必要です。あらかじめのインストール作業は不要で、ビルド時に `npx -y -p @mermaid-js/mermaid-cli mmdc` が自動的に [@mermaid-js/mermaid-cli](https://www.npmjs.com/package/@mermaid-js/mermaid-cli) を取得してSVGに変換します（結果は `.context-compositor/cache/` にキャッシュされ、次回以降は再取得しません）。Mermaidを使わない原稿ではNode.jsは不要です。
+原稿の中で ` ```mermaid ` フェンスを使う場合のみ、追加で以下が必要です。
+
+```bash
+pip install playwright==1.62.0
+```
+
+- **システムにインストール済みのGoogle ChromeまたはMicrosoft Edge**（新規ダウンロードはしない。ビルド時に自動検出して再利用する）
+- 上記の `playwright` パッケージ（既存ブラウザへCDP接続するために使うだけで、Playwright自身のブラウザダウンロード機能は使わない）
+
+Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）を取得してヘッドレスブラウザに読み込ませ、SVGに変換します（バンドルJS自体は `tool_dir/.mermaid-cache/` に、変換結果は `.context-compositor/cache/` にキャッシュされ、次回以降は再取得しません）。Mermaidを使わない原稿ではこれらは一切不要です。
 
 ## 使い方
 
@@ -54,7 +63,7 @@ python ../build.py
 
 ## 実装状況
 
-現在実装されているのは「`--config` で指定した（または自動検出した）設定ファイルに従い、複数のMarkdownファイルを1つのPDFへ結合する」というコア機能のみです。CLIオプションの拡張（出力先の上書き、テンプレート指定など）や、Markdown以外のフォーマット対応は構想段階です。既知の課題・今後の予定は [GitHub Issues](https://github.com/tokudiro/context-compositor/issues) を参照してください。
+現在実装されているのは「`--config` で指定した（または自動検出した）設定ファイルに従い、複数のファイルを1つのPDFへ結合する」というコア機能です。CLIオプションの拡張（出力先の上書きなど）は構想段階です。既知の課題・今後の予定は [GitHub Issues](https://github.com/tokudiro/context-compositor/issues) を参照してください。
 
 ## ライセンス
 

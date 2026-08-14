@@ -16,32 +16,20 @@
 | ファイル分割の単位 | 章・セクション単位の分割が一般的 | 「1ファイル＝1コンテキスト」という粒度。AIとの対話1回分がそのままファイル境界になる設計（仕様書1章） |
 | コードベースの規模 | 大規模・汎用（多数の出力形式、拡張機構、実行可能セル等） | `build.py` 1ファイル約700行。全体を読んで理解・改造できる規模に留めている |
 
-## GitHub Actions上でのダウンロード量（弱点の正直な記録）
+## GitHub Actions上でのダウンロード量
 
-「軽量」を謳う前提で実測・調査したところ、**Mermaidを使う場合はcontext-compositorの方がQuartoよりダウンロード量が多い**という、意図と逆の結果になった。
-
-比較は「設計どおり正しく設定されている状態」同士で行うべきなので、以下は**バグ・未実装を除いた、あるべき姿の数字**を主に載せる（現状の実装にあるバグは別途注記する）。
+かつて（#34・#35着手前）は、mmdc（`@mermaid-js/mermaid-cli`）をnpx経由で使う実装だったため、Mermaidを使う場合はcontext-compositorの方がQuartoよりダウンロード量が多いという、意図と逆の結果になっていた。#34（システムブラウザの検出・再利用）と#35（`mermaid-cli`丸ごとではなく単一バンドルJS+Playwright経由のCDP直接操作に置き換え）を実装した現在は、以下のとおり逆転している。
 
 | | ダウンロード量 | 内訳 |
 | --- | --- | --- |
 | Quarto（Mermaidなし、Typstバックエンドでbook合成） | 約140MB | [Quarto CLI tarball](https://github.com/quarto-dev/quarto-cli/releases/) 1本。Pandoc・Deno・[Typstまで同梱済み](https://quarto.org/docs/output-formats/typst.html)で追加ダウンロード不要 |
 | Quarto（Mermaidあり） | **約254MB** | 上記140MB + Mermaid図をPDF化するために必要な[Chrome Headless Shell](https://quarto.org/docs/blog/posts/2026-04-14-chrome-headless-shell.html) linux64版。[Google公式配布元](https://storage.googleapis.com/chrome-for-testing-public/152.0.7977.42/linux64/chrome-headless-shell-linux64.zip)で実測 **119,483,791バイト（約114MB、圧縮zip）** |
 | context-compositor（Mermaidなし） | 約60.5MB | pip: `typst`(32.6MB) + `markdown-it-py`(0.08MB) + `mdit-py-plugins`(0.05MB) + `PyYAML`(0.73MB) ≈ 33.5MB／Noto Sans JP: ZIP全体27MBをダウンロードし2ファイルだけ使用 |
-| context-compositor（Mermaidあり、**設計どおりシステムChromeを再利用した場合**） | **約456.5MB** | 上記60.5MB + `npx -p @mermaid-js/mermaid-cli mmdc` の依存ツリー約396MB。ブラウザは`ubuntu-latest`に標準搭載のChromeを再利用する前提のため追加ダウンロードなし（11章の設計。現状の実装はこの前提を満たしていない。後述） |
+| context-compositor（Mermaidあり） | **約109MB** | 上記60.5MB + `playwright`パッケージ（PyPI、manylinux1_x86_64ホイール実測**約45.5MB**） + `mermaid.min.js`（実測3.4MB）。ブラウザは`ubuntu-latest`に標準搭載のChromeを`find_system_browser()`（#34）で検出・再利用するため追加ダウンロードなし（11章、#35で実装済み） |
 | Marp CLI（`npx @marp-team/marp-cli`） | 約123MB＋ブラウザ | HTML/CSSをヘッドレスブラウザ（Puppeteer-core）で描画してPDF化する方式。パッケージ自体は約123MBだが、Chromiumが別途必要 |
 | Vivliostyle CLI（`npx @vivliostyle/cli`） | 約242MB＋ブラウザ | Marpと同じくPuppeteer-core方式。CSS組版のフル機能を持つ分、依存ツリーがさらに大きい |
 
-この「設計どおり」の前提で比較すると、Mermaid込みでもcontext-compositor（約456.5MB）はQuarto（約254MB）より重いものの、当初懸念したほどの絶望的な差ではない。
-
-### 現状の実装にあるバグ（この数字には含めていない）
-
-`build.py`は実際には`PUPPETEER_EXECUTABLE_PATH`を一度も設定しておらず、上記の「システムChrome再利用」という設計（11章）は**実装されていない**。そのため現時点で`npx -p @mermaid-js/mermaid-cli mmdc`を実行すると、`puppeteer-core`が自前でブラウザを探しに行き、見つからず`~/.cache/puppeteer/`配下にフルChrome（約428MB）とChrome Headless Shell（約272MB）の両方を自動ダウンロードしてしまう（合計約699MB、実測確認済み）。これを含めると現状の実測値は約1,155MB（約1.1GB）に達するが、**これは設計のバグであり、構造的な限界ではない**。[#34](https://github.com/tokudiro/context-compositor/issues/34)で修正を追跡している。
-
-### さらなる改善余地
-
-- [#35](https://github.com/tokudiro/context-compositor/issues/35): `mermaid-cli`丸ごとではなく、Mermaid公式が配布する単一バンドルJSファイル（`mermaid.min.js`、**実測3.4MB**）を直接取得し、CDP（Chrome DevTools Protocol）を自前で叩く最小限スクリプトに置き換える案。実現すればnpm依存ツリー396MBの大部分（使っていないUML図・ELKレイアウト機能等）を削減でき、Quartoを下回る可能性がある
-
-Mermaidを使わない用途に限れば、context-compositorはQuartoよりダウンロード量が少ない（60.5MB対140MB）。この差はNoto SansフォントZIPの無駄（27MBダウンロードして9.2MBしか使わない）を解消すればさらに縮められる（今後の課題）。
+Mermaid込みで比較すると、context-compositor（約109MB）はQuarto（約254MB）の半分以下に収まる。Mermaidを使わない用途ではさらに差が開く（60.5MB対140MB）。この差はNoto SansフォントZIPの無駄（27MBダウンロードして9.2MBしか使わない）を解消すればさらに縮められる（今後の課題）。
 
 実測値は展開後のディスク使用量、またはHTTPヘッダーから直接取得した圧縮ファイルサイズのいずれか（各行に記載の取得方法を参照）。両ツールとも、GitHub Actionsのキャッシュ機構（`actions/cache`等）を使えば2回目以降の実行コストは大きく下げられる。
 
@@ -51,15 +39,15 @@ Mermaidを使わない用途に限れば、context-compositorはQuartoよりダ�
 
 | ツール | Mermaid | Graphviz(dot) | PlantUML |
 | --- | --- | --- | --- |
-| context-compositor | 実装済み（`mmdc`/npx） | 実装済み（`diagraph`） | 未実装（設計のみ） |
+| context-compositor | 実装済み（Playwright経由のCDP直接操作、#35） | 実装済み（`diagraph`） | 未実装（設計のみ） |
 | [Quarto](https://quarto.org/docs/authoring/diagrams.html) | **ネイティブ組み込み**、追加設定不要 | **ネイティブ組み込み**、`{dot}`セルで即使える（[参照](https://medium.com/codex/quarto-1-4-adds-mermaid-and-graphviz-604de76fca21)） | 標準非対応。サードパーティのpandocフィルタか、Java+PlantUML jarの手動セットアップが必要（[参照](https://github.com/orgs/quarto-dev/discussions/6549)） |
 | Marp CLI | 組み込みなし。`markdown-it-mermaid`等を自分で`engine.js`に組み込む必要（[参照](https://github.com/orgs/marp-team/discussions/207)） | 組み込みなし（[要望issueあり](https://github.com/orgs/marp-team/discussions/219)、未実装） | 組み込みなし |
 | Vivliostyle CLI | 組み込みなし。`rehype-mermaid`等をprocessor置き換え拡張点経由で手動導入（[参照](https://zenn.dev/mura_mi/articles/4f08cc99f19887)） | 情報なし、おそらく同様に手動 | 情報なし、おそらく同様に手動 |
 
-Mermaid・GraphvizはQuartoが最初からネイティブに持っており、context-compositorが独自に実装した`mmdc`連携・`diagraph`連携と機能的にはほぼ同等である。PlantUMLだけはQuartoも標準非対応なので、そこは互角（どちらも今後の課題）。
+Mermaid・GraphvizはQuartoが最初からネイティブに持っており、追加設定が一切要らない。context-compositorは独自に実装した図表連携（Playwright/CDP直接操作・`diagraph`）でダウンロード量の面では上回るようになったが、「設定不要ですぐ使える」という手軽さではQuartoに及ばない。PlantUMLだけはQuartoも標準非対応なので、そこは互角（どちらも今後の課題）。
 
 ## 結論
 
-実測・調査を重ねるほど、「ダウンロード量」でも「図表描画機能」でもQuartoに対する明確な優位性は見出せなかった。Mermaid・Graphvizはむしろ Quarto がネイティブに勝っている。
+「図表描画機能の手軽さ（追加設定の要否）」ではQuartoに明確な優位性は見出せなかった。一方「ダウンロード量」は、#34・#35の実装によりMermaid込みでもcontext-compositorがQuartoの半分以下に収まるようになった。
 
-それでも比較表（冒頭）に挙げた項目——`typst-exec`のホワイトリスト、HTMLタグのフェイルファスト、`--root`のサンドボックス化、ツール/ドキュメントの完全分離——は、Quartoを含む汎用ツールが標準では持たない、**AIが生成したテキストを人間がレビューして安全に本番化するための運用ルール**である。これがcontext-compositorの存在意義の核であり、「軽さ」や「機能の独自性」はそもそも副次的な主張に過ぎなかった。今後この路線を続けるなら、強みとして語るべきは一貫してこのガバナンス面であるべきで、「軽量」「独自機能」を売りにするのは実態と合わない。
+とはいえ比較表（冒頭）に挙げた項目——`typst-exec`のホワイトリスト、HTMLタグのフェイルファスト、`--root`のサンドボックス化、ツール/ドキュメントの完全分離——は、Quartoを含む汎用ツールが標準では持たない、**AIが生成したテキストを人間がレビューして安全に本番化するための運用ルール**である。これがcontext-compositorの存在意義の核であることに変わりはなく、「軽量」は達成できた副次的な利点という位置づけに留め、主張の軸はこのガバナンス面に置き続けるべきである。

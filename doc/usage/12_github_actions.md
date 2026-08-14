@@ -37,7 +37,16 @@ jobs:
 
 ## Mermaidを使う場合の注意
 
-`plugins.mermaid: true`のプロジェクトでは、`npx`経由で`@mermaid-js/mermaid-cli`のnpm依存ツリー（約396MB）がビルドのたびに取得される。頻繁にビルドする場合は`actions/cache`でnpmキャッシュを効かせると2回目以降が速くなる。ブラウザ自体は前述のとおりランナー標準搭載のChromeを再利用するため、ここには含まれない。
+`plugins.mermaid: true`のプロジェクトでは、`pip install playwright==1.62.0`を追加で実行する（`requirements.txt`には含まれない。任意依存のため）。ブラウザは前述のとおりランナー標準搭載のChromeを再利用するため、Node.jsのインストールは不要。
+
+```yaml
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install playwright==1.62.0
+```
+
+Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）は初回ビルド時に`tool_dir/.mermaid-cache/`へダウンロードされる。`actions/checkout`は毎回新規チェックアウトのためこのキャッシュは引き継がれないが、サイズが小さいため実用上は都度取得でも問題にならない。
 
 ## リリース時にPDFをアセットとして添付する
 

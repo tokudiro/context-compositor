@@ -12,11 +12,11 @@ AIが生成し、人間が加筆・修正するテキストファイルを、1�
 
 * **Python中心・最小限のダウンロード**: コアはPython（`build.py`）のみで完結する。追加が必要なものも、その場でのダウンロードで完結させ、常駐サーバーやコンテナは要求しない。
   * Typstコンパイラ: バイナリを同梱せず、PyPIのホイール経由で取得する（3章）。
-  * オプトインの図表プラグイン: MermaidはNode.js、PlantUMLはJREを`npx`等でその場取得する（11章）。
+  * オプトインの図表プラグイン: Mermaidは`pip install playwright`とシステムにインストール済みのChrome/Edge（新規ダウンロードはしない）、PlantUMLはJREをその場取得する（11章、[#35](https://github.com/tokudiro/context-compositor/issues/35)）。
   * 日本語CJKフォント: リポジトリに同梱せず取得（ダウンロード）する方式とする。Noto Sans JP（Regular/Bold）を初回ビルド時に `tool_dir/.fonts-cache/` へダウンロード・キャッシュし、以降はキャッシュを使う（9章）。
 * **外部サーバー・SaaS非依存**: どこかの外部サーバーやSaaSに依存しない。図表描画を含め、外部APIへの通信によるコンテンツ生成は一切行わず、常に完全ローカルで完結させる。これは絶対要件であり、11章のプラグインにも適用される。
 * **GitHub Actions上での完結**: 上記2点の帰結として、GitHub Actions（`ubuntu-latest` などのGitHub-hosted runner）上だけで、セルフホストサーバーなしに完結してビルドできる。
-* **ローカル環境（Windows/Linux/macOS）**: 同じ理由で、Python（および必要に応じてNode.js/JRE等の軽量ランタイム）さえ用意すれば、Windows/Linux/macOSいずれでも同一の手順でビルドできる。
+* **ローカル環境（Windows/Linux/macOS）**: 同じ理由で、Python（および必要に応じてJRE等の軽量ランタイム）さえ用意すれば、Windows/Linux/macOSいずれでも同一の手順でビルドできる。
 
 ## 3. ツールとドキュメントの分離
 ツール本体とドキュメントは役割を分離する。原稿は通常、章ごとに分割された複数のテキストファイル（それぞれが1つのコンテキスト。1章）として、ツール外の任意の場所に存在する。原稿をツール側へコピーする運用は行わない。
@@ -123,9 +123,9 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 1. **Graphviz (dot)**: コミュニティ製Wasmプラグイン（`diagraph`）で、追加環境なしにローカル描画する。**（実装済み）** テンプレート側の `show raw.where(lang: "dot"/"graphviz")` が ```` ```dot ```` フェンスを自動的にレンダリングする。
 2. **PlantUML**: ローカルJava環境（軽量JREを2章の方針に沿って取得）を要求し、純Javaレイアウトエンジン「Smetana」を採用する。**（未実装）**
-3. **Mermaid**: 公式CLI(Node.js)／Playwright いずれも「追加依存なし」から外れるため、別途環境構築を伴うオプトイン機能として扱う。**（実装済み）**
-   * **実行環境の前提**: GitHub-hosted runner（`ubuntu-latest`）での実行を前提とする（2章）。ランナーに標準搭載のChrome（`/usr/bin/google-chrome` 等）を`PUPPETEER_EXECUTABLE_PATH`で指定し、Puppeteerによる再ダウンロードを避ける。
-   * **実装**: `npx -y -p @mermaid-js/mermaid-cli mmdc` でSVG化し、コンテンツのSHA256ハッシュをキー名として `project_dir/.context-compositor/cache/` にキャッシュする。mermaid既定のHTMLラベル（`<foreignObject>`）はTypstのraw SVGレンダラーが描画できないため、`flowchart.htmlLabels: false` を指定し通常のSVG `<text>` 要素で出力する。
+3. **Mermaid**: ヘッドレスブラウザでの描画を要するため、別途環境構築を伴うオプトイン機能として扱う。**（実装済み）**
+   * **実行環境の前提**: `find_system_browser()`（`build.py`）でシステムにインストール済みのChrome/Edgeを検出して再利用する（2章）。GitHub-hosted runner（`ubuntu-latest`）には標準搭載のChromeがあるため、そのまま動く。見つからない場合はFail-fastでエラー終了する（[#35](https://github.com/tokudiro/context-compositor/issues/35)。npm/npxに依存しなくなったため、npm経由の代替ダウンロードという選択肢が無い）。
+   * **実装**: Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、UMD形式、全図種込み。実測約3.4MB）を`tool_dir/.mermaid-cache/`へバージョン・SHA256を固定してダウンロード・キャッシュし（9章）、Playwright（Python版）の`connect_over_cdp()`でシステムブラウザにCDP接続してブラウザ内で`mermaid.render()`を直接呼び出す（`mermaid-cli`丸ごとの導入は不要、Node.js自体が不要になった）。1回のビルドでヘッドレスブラウザ・ページは1つだけ起動し、複数のMermaid図で使い回す。コンテンツのSHA256ハッシュをキー名として `project_dir/.context-compositor/cache/` にSVG結果をキャッシュする。mermaid既定のHTMLラベル（`<foreignObject>`）はTypstのraw SVGレンダラーが描画できないため、`flowchart.htmlLabels`とトップレベルの`htmlLabels`両方を`false`に指定し通常のSVG `<text>` 要素で出力する（トップレベルのみでは効かないことを実測で確認済み）。
    * **図とテキストのレイアウト**: `::: layout-right ... :::`（テキスト左・mermaid図右の2カラム）、`::: layout-compare ... :::`（2つのmermaid図を左右に並べる）という独自のMarkdown拡張記法を用意した。ASTの通常フローに入る前の生テキスト段階で正規表現により切り出し、個別にTypstの`grid`へ変換している。横長の図をlayout-compareで並べると縮小されすぎて読めなくなることを実測で確認済み。正方形に近い図でのみ使うこと。
    * **画像サイズの自動調整**: `templates/slide.typ` の `fit-image()` が幅・高さそれぞれの縮小率を計算し、小さい方を採用する。高さの上限は固定値`MAX_IMG_HEIGHT`（現在12cm）。Typstの`layout()`が返す`size`は「ページの残りスペース」ではなく「コンテナ全体のサイズ」で、見出しや本文が使った分を考慮できないため、動的計算ではなく安全側の固定値にしている。
 

@@ -7,7 +7,7 @@ plugins:
   plantuml: false   # 未実装（trueにしても警告のみ）
 ```
 
-`false` にすると、該当する図表フェンス（`dot`/`graphviz`/`mermaid`言語のコードブロック）は描画せず、素のコード表示にフォールバックします。`mermaid: true` の場合のみ、ビルド時にNode.js（`npx`）が必要になります（詳細はREADME）。
+`false` にすると、該当する図表フェンス（`dot`/`graphviz`/`mermaid`言語のコードブロック）は描画せず、素のコード表示にフォールバックします。`mermaid: true` の場合のみ、`playwright`パッケージとシステムのChrome/Edgeが必要になります（詳細はREADME）。
 
 # inputs: 原稿ファイルの基準ディレクトリ
 
