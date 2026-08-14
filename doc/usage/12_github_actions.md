@@ -2,7 +2,7 @@
 
 GitHub-hosted runner（`ubuntu-latest`等）には標準でGoogle Chromeが導入されている。`plugins.mermaid: true`を使うプロジェクトでも、ビルド時に既存のChromeを自動検出して再利用するため、追加のブラウザダウンロード（設定を誤ると発生しうる約699MB）は発生しない。
 
-## 最小構成のワークフロー例
+## 最小構成のワークフロー例（build.pyを自リポジトリに含む場合）
 
 ```yaml
 name: Build Docs
@@ -34,6 +34,50 @@ jobs:
 ```
 
 `plugins.graphviz`のみを使うプロジェクトは、これだけで完結する（Node.js/JRE等の追加インストール不要）。
+
+## ツールとドキュメントを別リポジトリのまま使う場合（兄弟チェックアウト）
+
+3章・8章の「ツール本体とドキュメントの分離」はGitHub Actions上でも成立する。`build.py`をドキュメント側リポジトリへコピー・同梱する必要はなく、context-compositorを別リポジトリとして`actions/checkout@v4`の`repository:`パラメータで指定し、兄弟ディレクトリとしてチェックアウトすればよい（[#24](https://github.com/tokudiro/context-compositor/issues/24)で実証済み）。
+
+```yaml
+name: Build Docs
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo (docs/config)
+        uses: actions/checkout@v4
+        with:
+          path: this-repo
+
+      - name: Checkout context-compositor (tool)
+        uses: actions/checkout@v4
+        with:
+          repository: <owner>/context-compositor
+          path: context-compositor
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: pip install -r context-compositor/requirements.txt
+
+      - name: Build PDF
+        run: python context-compositor/build.py --config this-repo/path/to/context-compositor.config.yaml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdf
+          path: this-repo/path/to/output.pdf
+```
+
+`this-repo`側にはドキュメント原稿と`context-compositor.config.yaml`だけを置けばよく、`build.py`本体やそのライセンス・バージョン管理を各ドキュメントリポジトリ側で意識する必要がない。context-compositorが公開リポジトリであれば、`repository:`に指定するだけで追加の認証設定なしにチェックアウトできる。
 
 ## Mermaidを使う場合の注意
 
