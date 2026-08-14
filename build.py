@@ -777,5 +777,11 @@ def build():
         print(f"[Error] Execution failed: {e}")
         sys.exit(1)
 
+    # ビルド成功後、使い捨ての中間ファイルを削除する（12章、#20）。
+    # mermaidキャッシュ(cache/)は次回以降のビルドで再利用するため対象外。
+    # 失敗時は温存し、生成されたTypstコードをそのままデバッグに使えるようにする。
+    os.remove(temp_typ_path)
+    os.remove(template_copy_path)
+
 if __name__ == "__main__":
     build()

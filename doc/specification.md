@@ -127,5 +127,5 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 ## 12. ビルド成果物と一時ファイル
 * 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートは同じ `.context-compositor/_template.typ` へコピーしてから参照する（5章・8章のサンドボックス要件）。画像はコピーせず、`--root` 起点のルート絶対パス（`/...`）で参照して解決する。
-* `.context-compositor/` はビルドのたびに `temp_build.typ` を上書き生成するのみで、ビルド後の削除は未実装（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
+* ビルド成功後、`temp_build.typ` と `_template.typ` は使い捨ての中間ファイルとして削除する。`cache/`（Mermaid等の描画結果）は次回以降のビルドで再利用するため削除しない。ビルド失敗時はデバッグに使えるよう `temp_build.typ` 等を残したまま終了する（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
 * 出力 PDF が既に開かれている等で書き込めない場合は、部分的な破損ファイルを残さず明確なエラーで終了する。
