@@ -1,13 +1,13 @@
 document:
-  title: "System Specification"
+  title: "Sample Document"
   subtitle: "Next Generation Platform"
   author: "AI/Human Co-authoring Team"
-  date: "2026-08-01"
+  date: "2026-08-14"
   landscape: false  # 全体を横にする場合は true にする
   paper_size: "a4"  # a3, b5 などの用紙サイズ指定
 
 output:
-  filename: "System_Specification.pdf"
+  filename: "SampleDocument.pdf"
   dir: "."
 
 template:
