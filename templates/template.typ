@@ -22,15 +22,19 @@
   landscape: false,
   cover: true,
   cover_page_number: false,
+  graphviz: true,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
   // OSフォントは直接指定しない。Noto Sans JP に無いグリフはTypstが自動でシステムフォントにフォールバックする）
   set text(font: "Noto Sans JP", size: 10.5pt)
-  
+
   // プラグイン: Graphviz (dot) 自動レンダリングと、はみ出し防止の自動縮小
+  // graphviz: false のときは既定のraw表示（素のコード表示）にフォールバックする。
+  // showルール自体は常時登録する（ifブロックの中で宣言すると、ブロックを抜けた
+  // doc側には効かなくなる。show/setはブロックスコープで閉じるため）。
   import "@preview/diagraph:0.3.7": render
-  
+
   let render-graph(code) = layout(size => context {
     let graph = render(code)
     let g-size = measure(graph)
@@ -40,10 +44,10 @@
       graph
     }
   })
-  
-  show raw.where(lang: "dot"): it => align(center)[#render-graph(it.text)]
-  show raw.where(lang: "graphviz"): it => align(center)[#render-graph(it.text)]
-  
+
+  show raw.where(lang: "dot"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
+  show raw.where(lang: "graphviz"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
+
   // -------------------------
   // 1. 表紙 (Cover Page) : cover: false のときは省略する
   // -------------------------

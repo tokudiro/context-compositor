@@ -68,7 +68,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 ## 6. 設定ファイル (Configuration as Code)
 * `config.yaml` / `config.json` のどちらでも書けるが、内部では単一のスキーマ（正規化された辞書構造やPydantic等）に統合して扱い、パース処理の破綻を防ぐ。パスの基準は5章に従う。
 * ファイル順序、ページ設定、出力メタデータ、データ集約ディレクトリ（aggregate）を一元管理する。
-  * `plugins:`（Graphviz/PlantUML/Mermaidの有効・無効切り替え）はスキーマ上の予約項目だが、`build.py` はまだ読み取っていない。Graphvizは常時有効、Mermaidはフェンスがあれば常に描画される（[#21](https://github.com/tokudiro/context-compositor/issues/21)）。
+  * `plugins:`（Graphviz/PlantUML/Mermaidの有効・無効切り替え）。`graphviz`/`mermaid`は既定 `true`（未指定時は従来どおり常時有効）で、`false`にすると該当フェンス（```` ```dot ````/```` ```graphviz ````/```` ```mermaid ````）は描画せず、未対応言語と同じ素のコード表示にフォールバックする。`plantuml`はレンダリング自体が未実装のため、`true`にしても警告のみで素のコード表示のままとなる（[#21](https://github.com/tokudiro/context-compositor/issues/21)）。
 * **設定の優先順位**: `config.yaml` の章別設定 ＞ グローバル設定 ＞ 内蔵デフォルト。CLIオプションによる上書きは、`--config` 以外のオプションが未実装のため現状存在しない（4章）。実装された場合はCLIオプションが最優先になる想定。
 * **設定ファイル自体は必須**: `--config`、またはカレントディレクトリからの自動検出（5章）で、いずれかの設定ファイルが必要。中身は最小限でよいが、`chapters` は現状ここで指定する以外の方法がない（入力パスからの自動導出は未実装。[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 * YAML パーサ（PyYAML）が未導入のまま `config.yaml` を無視して既定値でビルドを続行してはならない。サイレントに誤った成果物が出るため即エラーとする。

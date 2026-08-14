@@ -27,13 +27,15 @@
   landscape: true,
   cover: true,
   cover_page_number: true,
+  graphviz: true,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
   // OSフォントは直接指定しない。Noto Sans JP に無いグリフはTypstが自動でシステムフォントにフォールバックする）
   set text(font: "Noto Sans JP", size: 18pt)
 
-  // Graphviz
+  // Graphviz。graphviz: false のときは既定のraw表示（素のコード表示）にフォールバックする。
+  // showルール自体は常時登録する（ブロックスコープで閉じるため、ifの中で宣言すると効かなくなる）。
   import "@preview/diagraph:0.3.7": render
   let render-graph(code) = layout(size => context {
     let graph = render(code)
@@ -45,8 +47,8 @@
     }
   })
 
-  show raw.where(lang: "dot"): it => align(center)[#render-graph(it.text)]
-  show raw.where(lang: "graphviz"): it => align(center)[#render-graph(it.text)]
+  show raw.where(lang: "dot"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
+  show raw.where(lang: "graphviz"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
 
   let page-number-footer = align(right)[#text(16pt, fill: luma(100))[#context counter(page).display("1")]]
 

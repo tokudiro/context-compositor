@@ -84,7 +84,7 @@ class TypstRenderer:
     LAYOUT_BLOCK_RE = re.compile(r'^::: *(layout-right|layout-compare) *\r?\n(.*?)\r?\n::: *\r?$', re.MULTILINE | re.DOTALL)
     MERMAID_FENCE_RE = re.compile(r'```mermaid\r?\n(.*?)\r?\n```', re.DOTALL)
 
-    def __init__(self, base_dir=None, typst_root=None):
+    def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True):
         self.md = MarkdownIt("commonmark").enable("table")
         self.list_stack = []
         self.current_file = ""
@@ -96,6 +96,10 @@ class TypstRenderer:
         self.typst_root = typst_root or os.path.dirname(self.base_dir)
         self.allow_exec = False
         self.front_matter = {}
+        # plugins.mermaid: false（6章、#21）。falseなら```mermaidフェンスをmmdcで描画せず、
+        # 他の未対応言語と同じく素のコード表示にフォールバックする。
+        self.mermaid_enabled = mermaid_enabled
+        self._mermaid_disabled_warned = False
 
     def render(self, text, filepath="", drop_leading_title=False):
         self.current_file = filepath
@@ -326,6 +330,12 @@ class TypstRenderer:
         既存のChrome/Edgeが見つかればPUPPETEER_EXECUTABLE_PATHで明示指定し、Puppeteerによる
         ブラウザの自動ダウンロードを回避する。見つからない場合のみ、フルChrome(約428MB)ではなく
         軽量なchrome-headless-shell(約272MB)だけを取得するフォールバックへ切り替える（仕様書11章、#34）。"""
+        if not self.mermaid_enabled:
+            if not self._mermaid_disabled_warned:
+                print(f"[Info] plugins.mermaid is disabled; leaving ```mermaid fences as plain code (first seen in {self.current_file}).")
+                self._mermaid_disabled_warned = True
+            return f"```mermaid\n{code}```\n\n"
+
         cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
         os.makedirs(cache_dir, exist_ok=True)
         digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
@@ -586,6 +596,14 @@ def build():
         print("[Error] No chapters configured in config.yaml. Aborting.")
         sys.exit(1)
 
+    # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
+    # 維持する既定値（graphviz/mermaidは常時有効、plantumlは未実装のため既定で無効）。
+    plugins_config = config.get("plugins") or {}
+    graphviz_enabled = bool(plugins_config.get("graphviz", True))
+    mermaid_enabled = bool(plugins_config.get("mermaid", True))
+    if plugins_config.get("plantuml", False):
+        print("[Warning] plugins.plantuml is enabled, but PlantUML rendering is not implemented yet; ```plantuml fences will be left as plain code.")
+
     outputs_dir = os.path.normpath(os.path.join(project_dir, config["output"]["dir"]))
     os.makedirs(outputs_dir, exist_ok=True)
     # 【修正】ハードコードをやめ config の inputs.dir を実際に使用する
@@ -653,12 +671,13 @@ def build():
   date: "{safe_date}",
   paper_size: "{global_paper}",
   landscape: {str(global_landscape).lower()},
-{cover_arg}{cover_page_number_arg}  doc,
+{cover_arg}{cover_page_number_arg}  graphviz: {str(graphviz_enabled).lower()},
+  doc,
 )
 
 """
 
-    renderer = TypstRenderer(project_dir, typst_root=typst_root)
+    renderer = TypstRenderer(project_dir, typst_root=typst_root, mermaid_enabled=mermaid_enabled)
 
     current_landscape = global_landscape
     current_paper = global_paper
