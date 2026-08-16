@@ -3,6 +3,8 @@ document:
   subtitle: "Next Generation Platform"
   author: "AI/Human Co-authoring Team"
   date: "2026-08-14"
+  cover: template  # 既定はnone（表紙なし）。このサンプルでは表紙ありを実演する
+  toc: true        # 既定はfalse（目次なし）。このサンプルでは目次ありを実演する
   landscape: false  # 全体を横にする場合は true にする
   paper_size: "a4"  # a3, b5 などの用紙サイズ指定
 

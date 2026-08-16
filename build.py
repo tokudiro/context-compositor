@@ -1296,15 +1296,16 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
     global_paginate = str(doc_config.get('paginate', True)).lower() == 'true'
 
     # 表紙の扱い: template=テンプレートの表紙のみ / replace=テンプレートの表紙でMarkdown先頭の
-    # タイトルスライドを置き換える / markdown=Markdown側のみ / none=表紙なし
-    cover_mode = doc_config.get('cover', 'template')
+    # タイトルスライドを置き換える / markdown=Markdown側のみ / none=表紙なし。既定はnone（安定版前の
+    # ため、表紙の要否を明示させる方針。#58の目次デフォルト変更と合わせた判断）
+    cover_mode = doc_config.get('cover', 'none')
     if isinstance(cover_mode, bool):
         cover_mode = 'template' if cover_mode else 'none'
     cover_mode = str(cover_mode).lower()
     if cover_mode not in ('template', 'replace', 'markdown', 'none'):
         print(f"[Error] Invalid document.cover: {cover_mode!r} (expected template / replace / markdown / none)")
         sys.exit(1)
-    # 既定(template)のときは引数を渡さず、cover 引数を持たない既存テンプレートとの互換を保つ
+    # template/replaceのときだけ引数を渡さず、cover引数を持たない既存テンプレートとの互換を保つ
     cover_arg = '' if cover_mode in ('template', 'replace') else '  cover: false,\n'
 
     # 表紙のページ番号表示。未指定ならテンプレート自身の既定値に任せ、引数自体を渡さない
@@ -1314,7 +1315,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
         if cover_page_number is not None else ''
     )
 
-    # 目次の表示有無（#58）。未指定ならテンプレート自身の既定値（true）に任せ、引数自体を渡さない
+    # 目次の表示有無（#58）。未指定ならテンプレート自身の既定値（false）に任せ、引数自体を渡さない
     toc = doc_config.get('toc')
     toc_arg = f'  toc: {str(bool(toc)).lower()},\n' if toc is not None else ''
 

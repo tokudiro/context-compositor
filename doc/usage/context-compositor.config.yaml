@@ -6,6 +6,7 @@ document:
   paper_size: "a4"
   landscape: false
   cover: "template"
+  toc: true
 
 output:
   filename: "context-compositor-usage-guide.pdf"

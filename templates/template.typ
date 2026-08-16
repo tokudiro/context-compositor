@@ -49,7 +49,7 @@
   landscape: false,
   cover: true,
   cover_page_number: false,
-  toc: true,
+  toc: false,
   graphviz: true,
   header: none,
   footer: none,
