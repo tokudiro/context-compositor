@@ -5,6 +5,7 @@ document:
   date: "2026-08-14"
   cover: template  # 既定はnone（表紙なし）。このサンプルでは表紙ありを実演する
   toc: true        # 既定はfalse（目次なし）。このサンプルでは目次ありを実演する
+  background: "images/draft-watermark.png"  # 本文ページの背景画像（#55）。DRAFT透かしの例
   landscape: false  # 全体を横にする場合は true にする
   paper_size: "a4"  # a3, b5 などの用紙サイズ指定
 
@@ -28,9 +29,11 @@ chapters:
   - "02_features.md"
   - file: "03_architecture.md"
     paper_size: "a4"  # 必要に応じてこの章だけa3等に変更可能
+    background: "images/confidential-watermark.png"  # 章ごとに背景を差し替える例（#55）
   - "04_deployment.dot"    # 図表ソースファイルを直接chaptersに指定する例（#53）
   - "05_workflow.mmd"
   - "06_components.puml"
   - aggregate: "testcases"
     title: "システムテスト仕様書 (マトリクス)"
     landscape: true   # テーブルは横長になりやすいのでA4横を指定
+    background: null  # 章ごとに背景を解除する例（#55）。表はDRAFT透かしより見やすさを優先
