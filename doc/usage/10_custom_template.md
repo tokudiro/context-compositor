@@ -2,7 +2,28 @@
 
 `template.path` に `.typ` で終わるパスを指定すると、自分で書いたTypstテンプレートを使えます（「template: テンプレートの指定」の章）。テンプレートは以下の関数をエクスポートする必要があります。
 
-- `conf(title:, subtitle:, author:, date:, paper_size:, landscape:, cover:, cover_page_number:, graphviz:, doc)`: 文書全体の骨格（表紙・目次・本文ページの設定）。
+- `conf(...)`: 文書全体の骨格（表紙・目次・本文ページの設定）。引数は「必須」と「任意」の2種類に分かれる（下記）。
 - `fit-image(path)`: 画像を1枚受け取り、はみ出さないよう自動縮小して配置する。
 
 同梱の `templates/template.typ` をコピーして書き換えるのが早道です。
+
+## conf() の必須引数
+
+`config.yaml`の指定有無に関わらず、`build.py`は常に以下を`conf()`へ渡す。テンプレートがこれらを受け取れないと、そのテンプレートは常にビルドエラーになる。
+
+```
+conf(title:, subtitle:, author:, date:, paper_size:, landscape:,
+     graphviz:, header:, footer:, paginate:, doc)
+```
+
+## conf() の任意引数
+
+以下は`config.yaml`側で明示指定したときだけ`conf()`へ渡される。未指定なら引数自体を渡さないため、テンプレートが持たなくても即座には壊れない（そのテンプレートを使う人が該当のconfig.yamlキーを使わない限り安全）。
+
+```
+conf(cover:, cover_page_number:, toc:, ...)
+```
+
+ただし、これらは「`config.yaml`があればどのテンプレートでも上書きできる」という設計原則（`doc/spec.md` 1章）の対象でもある。独自テンプレートでも、可能な限り全て受け取れるようにしておくことを推奨する。テンプレートの見た目として意味を持たない引数（例: スライド用テンプレートにとっての`toc`）は、受け取った上で何もしない（no-op）実装でよい。
+
+同梱テンプレート間でも、これらの既定値は必ずしも揃っていない。例えば`cover_page_number`は`template.typ`（文書）が`false`、`slide.typ`（スライド）も`false`だが、これは「スライドの表紙にはページ番号を付けないのが通例」という各テンプレートのView上の判断であり、揃えるべき値と揃えなくてよい値の線引きは個別に検討する。
