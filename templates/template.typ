@@ -49,6 +49,16 @@
   }
 }
 
+// 本文ページの背景画像（#55）。header/footerと同じ「章単位で明示指定を出し直す」パターンで、
+// build.py側が章ごとに#set page(background: render-background(...))を再発行する。
+// 画像はページ全面に敷き、本文はその上に通常どおりレイアウトされる（重なりの調整はしない。
+// 濃い背景を使うと本文が読みにくくなるため、薄い画像を使うことを利用者側で判断する）。
+#let render-background(path) = if path != none {
+  place(top + left, image(path, width: 100%, height: 100%))
+} else {
+  none
+}
+
 #let conf(
   title: none,
   subtitle: none,
@@ -63,6 +73,7 @@
   header: none,
   footer: none,
   paginate: true,
+  background: none,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -138,6 +149,7 @@
     flipped: landscape,
     header: render-header(if header != none { header } else { title }),
     footer: render-footer(footer, paginate),
+    background: render-background(background),
   )
   counter(page).update(1) // 本文のページ番号を 1 からリセット
 

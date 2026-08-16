@@ -11,6 +11,7 @@
 - `conf(...)`: 文書全体の骨格（表紙・目次・本文ページの設定）。引数は「必須」と「任意」の2種類に分かれる（下記）。
 - `fit-image(path)`: 画像を1枚受け取り、はみ出さないよう自動縮小して配置する。
 - `callout(kind: "note", body)`: alert記法（`> [!NOTE]`等、[Markdownファイルの書き方](06_markdown_basics.md)を参照）が生成する呼び出し先。`kind`は`"note"`/`"tip"`/`"important"`/`"warning"`/`"caution"`のいずれか。同梱テンプレートは[note-me](https://github.com/FlandiaYingman/note-me)（MIT、`@preview/note-me:0.6.0`）に委譲する実装になっている。
+- `render-background(path)`: `document.background`/`chapters[].background`（下記）が渡す画像パス（または`none`）を受け取り、ページ背景として敷くコンテンツを返す。
 
 同梱の `templates/template.typ` をコピーして書き換えるのが早道です。
 
@@ -20,7 +21,7 @@
 
 ```
 conf(title:, subtitle:, author:, date:, paper_size:, landscape:,
-     graphviz:, header:, footer:, paginate:, doc)
+     graphviz:, header:, footer:, paginate:, background:, doc)
 ```
 
 ## conf() の任意引数

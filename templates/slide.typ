@@ -45,6 +45,13 @@
   }
 }
 
+// 本文ページの背景画像（#55）。template.typと同じ実装。
+#let render-background(path) = if path != none {
+  place(top + left, image(path, width: 100%, height: 100%))
+} else {
+  none
+}
+
 #let conf(
   title: none,
   subtitle: none,
@@ -59,6 +66,7 @@
   header: none,
   footer: none,
   paginate: true,
+  background: none,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -111,6 +119,7 @@
     margin: (x: 2cm, y: 1.5cm),
     header: if header != none { render-header(header) } else { none },
     footer: render-footer(footer, paginate),
+    background: render-background(background),
   )
 
   // 本文の設定

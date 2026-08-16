@@ -14,6 +14,7 @@
 | `header` | 本文ページのヘッダーに表示する文字列（下記） | `title`と同じ |
 | `footer` | 本文ページのフッターに表示する文字列（下記） | なし（ページ番号のみ） |
 | `paginate` | 本文ページにページ番号を表示するか（下記） | `true` |
+| `background` | 本文ページの背景画像（下記） | なし |
 | `table_header` | 通常のMarkdownテーブルのヘッダ行スタイル（下記） | 無装飾 |
 | `glossary` | `[[用語]]`による巻末用語索引を生成するか（「Markdownファイルの書き方」の章を参照） | `false` |
 
@@ -55,6 +56,19 @@ document:
 ```
 
 `chapters`側で章ごとに上書きできます（`landscape`/`paper_size`と同じ優先順位パターン。「chapters: 章の並び」の章を参照）。フッターにカスタム文字列とページ番号を両方指定した場合は、左にフッター文字列・右にページ番号が並びます。この設定はMarpの`header`/`footer`/`paginate`ディレクティブとは無関係です（[#42](https://github.com/tokudiro/context-compositor/issues/42)。ディレクティブは「Markdownの書き方」の章を参照）。
+
+## background: 背景画像
+
+本文ページ全体に、透かしや地紋のような背景画像を敷けます。
+
+```yaml
+document:
+  background: "watermark.png"   # config.yamlからの相対パス
+```
+
+`chapters`側で章ごとに上書きできます（`header`/`footer`/`paginate`と同じ優先順位パターン。`background: null`を指定すると、その章だけ背景を外せます）。front-matter経由での上書きは非対応です（パス値のため、`table_header`と同じ理由）。
+
+画像はページ全面に敷かれ、本文はその上に通常どおりレイアウトされます。透明度の自動調整は行わないため、本文が読みにくくならないよう、あらかじめ薄い・低コントラストな画像を用意してください。ファイルサイズが大きいとPDFの出力サイズにも影響します。
 
 ## table_header: テーブルヘッダのスタイル
 
