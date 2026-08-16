@@ -168,3 +168,18 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートは同じ `.context-compositor/_template.typ` へコピーしてから参照する（5章・8章のサンドボックス要件）。画像はコピーせず、`--root` 起点のルート絶対パス（`/...`）で参照して解決する。
 * ビルド成功後、`temp_build.typ` と `_template.typ` は使い捨ての中間ファイルとして削除する。`cache/`（Mermaid等の描画結果）は次回以降のビルドで再利用するため削除しない。ビルド失敗時はデバッグに使えるよう `temp_build.typ` 等を残したまま終了する（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
 * 出力 PDF が既に開かれている等で書き込めない場合は、部分的な破損ファイルを残さず明確なエラーで終了する。
+
+## 13. FAQ（よくある疑問）
+
+**Q. Typstコンパイラを直接使えばよいのでは？**
+
+A. 両者はレイヤーが異なるため比較の対象にならない。Typstはタイプセッティングエンジンであり、context-compositorはそのTypstに依存する側のツールである。原稿をMarkdownで書けること、複数ファイルを`config.yaml`駆動で1冊に合成できること、AIにレイアウトの決定権を渡さないことの3点が、Typst単体には無い価値である。詳細は[doc/diff.md](diff.md)「Typst自体との違い」を参照。
+
+**Q. AIにMarkdownとTypst構文の両方を書かせて、以後はMarkdownだけ更新すればよいのでは？　それならこのツールは要らないのでは？**
+
+A. 要らなくなるのではなく、このツールが解決している2つの問題がそのまま再発する。
+
+* **非決定性**: markdown-it-pyによる変換は決定論的処理であり、同じMarkdownからは常に同じTypstコードが生成される（1章）。AIにTypstを書かせる（生成させる）と、同じMarkdownでも実行のたびに出力が変わり得る。レイアウトが実行のたびにブレる文書は、レビューをやり直すコストが際限なく発生する。
+* **AIへのデザイン権限**: 「Markdownだけ更新する」運用にしても、そのMarkdownをTypstへ反映する処理自体をAIにやらせる限り、AIはレイアウト生成の立場から抜けられない。設計の核心は、レイアウトの決定権を「人間が書き・レビューするテンプレート」側に固定し、AIを内容執筆だけに限定することにある（1章「AIからのデザイン権限の剥奪」）。
+
+加えて、ビルドのたびにAI API呼び出しが必要になる点は、2章の「外部APIへの通信によるコンテンツ生成は一切行わない」という絶対要件に単純に反する。markdown-it-pyによる決定論的な変換は、実装上の都合による妥協ではなく、このツールの存在意義そのものである。
