@@ -29,6 +29,7 @@ CommonMark準拠に加え、GFM (GitHub Flavored Markdown) の一部とGitHub Wi
 | 自動リンク（`<https://example.com>`、山括弧付き） | 対応（CommonMark標準） |
 | 裸URLの自動リンク化（`https://example.com`、山括弧なし） | **非対応**。リンクにしたい場合は山括弧で囲むか `[表示テキスト](URL)` を使う |
 | GitHub Wikiの用語索引記法（`[[用語]]`） | 対応（`document.glossary: true`のときのみ。下記） |
+| alert（`> [!NOTE]`等） | 対応（下記） |
 | 文字色指定 | 対応（GFM/GitHub Wikiのどちらにも属さない例外。下記） |
 | 生HTML | 非対応（`<span style="color:...">`を除く狭い例外のみ。「Markdownの書き方」以降の各章を参照） |
 
@@ -49,6 +50,24 @@ CommonMark準拠に加え、GFM (GitHub Flavored Markdown) の一部とGitHub Wi
 - 色の指定は、Typstが認識する色名（`red`、`blue`等の英単語）か `"#rrggbb"` 形式のいずれかです。
 - `color`以外の属性（`[text]{class=foo}`等）は無視され、見た目には反映されません。
 - `<span>`を閉じ忘れた場合はビルドを止めず、自動的に閉じたうえで警告を出します。
+
+## alert: 注意書きの囲み
+
+GitHub形式のalert記法（`> [!NOTE]`等）で、本文と区別した囲み枠（callout）を出せます。
+
+```markdown
+> [!NOTE]
+> これは補足情報です。
+> 複数行にもなります。
+
+> [!TIP]
+> これはヒントです。
+```
+
+- 対応する種別は`NOTE`/`TIP`/`IMPORTANT`/`WARNING`/`CAUTION`の5つです（大文字のみ）。
+- マーカー（`[!NOTE]`等）は、引用ブロックの最初の行に単独で書く必要があります。それ以外の内容と同じ行に書いても認識されません。
+- 実体は[note-me](https://github.com/FlandiaYingman/note-me)（MITライセンス、`@preview/note-me:0.6.0`）というTypst Universeのパッケージにそのまま委譲しています。色・アイコンはこのパッケージの既定のままです。
+- マーカーに一致しない通常の引用（`>`）は、従来どおり装飾なしの引用として表示されます。
 
 ## [[用語]]: 巻末用語索引
 

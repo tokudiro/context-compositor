@@ -13,6 +13,15 @@
   }
 })
 
+// GitHub形式のalert記法（`> [!NOTE]`等、#61）。build.py側がblockquoteの先頭行から種別を検出し、
+// callout(kind: "note")[...]のようなコードを生成する。実体はnote-me（MIT、@preview/note-me:0.6.0。
+// #63でライセンス確認済み）にそのまま委譲する。全テンプレートが同じ関数名を持つ必要があるため
+// （原稿を書く人はテンプレートの種類を意識しない。doc/usage/10_custom_template.md参照）、
+// slide.typにも同じ実装がある。
+#import "@preview/note-me:0.6.0": note, tip, important, warning, caution
+#let callout-fns = (note: note, tip: tip, important: important, warning: warning, caution: caution)
+#let callout(kind: "note", body) = (callout-fns.at(kind, default: note))(body)
+
 // 本文ページのヘッダー・フッター（#42）。chapters[]/front-matterによるチャプター単位の上書きは
 // build.py側が章ごとに#set page(header: render-header(...), footer: render-footer(...))を
 // 再発行する形で実現する（state()は使わない。#16の反省点。landscape/paper_sizeと同じ

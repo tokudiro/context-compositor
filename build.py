@@ -136,6 +136,11 @@ class TypstRenderer:
     HTML_SPAN_COLOR_OPEN_RE = re.compile(r'^<span\s+style\s*=\s*["\']color\s*:\s*([^;"\']+?)\s*;?\s*["\']\s*>$', re.IGNORECASE)
     HTML_SPAN_CLOSE_RE = re.compile(r'^</span\s*>$', re.IGNORECASE)
 
+    # GitHub形式のalert記法（#61）。`> [!NOTE]`のように、blockquoteの最初の行がこのマーカーだけの
+    # ときだけ発動する。テンプレート側は@preview/note-me（MIT、#63でライセンス確認済み）が持つ
+    # note/tip/important/warning/cautionをcallout()でラップして呼び出す。
+    ALERT_MARKER_RE = re.compile(r'^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$')
+
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
                  plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False, tool_dir=None):
         # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
@@ -376,6 +381,25 @@ class TypstRenderer:
         # 除去した行数ぶん改行を残し、以降の警告メッセージの行番号がずれないようにする
         return '\n' * m.group(0).count('\n') + text[m.end():], meta
         
+    def _detect_alert_kind(self, tokens, i):
+        """tokens[i]がblockquote_openのとき、直後の段落が`[!NOTE]`等のマーカーだけの行なら
+        種別（小文字）を返す。マッチした場合、マーカーのテキストトークン（と直後のsoftbreak）を
+        その場で取り除く（以降のinlineレンダリングに影響しないようにするため）。"""
+        if i + 2 >= len(tokens):
+            return None
+        if tokens[i + 1].type != 'paragraph_open' or tokens[i + 2].type != 'inline':
+            return None
+        children = tokens[i + 2].children
+        if not children or children[0].type != 'text':
+            return None
+        m = self.ALERT_MARKER_RE.match(children[0].content.strip())
+        if not m:
+            return None
+        children.pop(0)
+        if children and children[0].type == 'softbreak':
+            children.pop(0)
+        return m.group(1).lower()
+
     def render_tokens(self, tokens, start=0):
         result = []
         i = start
@@ -393,7 +417,11 @@ class TypstRenderer:
                 if not t.hidden:
                     result.append('\n\n')
             elif t.type == 'blockquote_open':
-                result.append('#quote(block: true)[\n')
+                alert_kind = self._detect_alert_kind(tokens, i)
+                if alert_kind:
+                    result.append(f'#callout(kind: "{alert_kind}")[\n')
+                else:
+                    result.append('#quote(block: true)[\n')
             elif t.type == 'blockquote_close':
                 result.append(']\n\n')
             elif t.type == 'inline':
@@ -1329,7 +1357,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
     safe_date = escape_string_literal(date_str)
 
     preamble = f"""
-#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, render-header, render-footer
+#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, render-header, render-footer, callout
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",

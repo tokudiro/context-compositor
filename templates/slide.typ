@@ -18,6 +18,12 @@
   }
 })
 
+// GitHub形式のalert記法（#61）。template.typと同じ実装（note-me、MIT、@preview/note-me:0.6.0。
+// #63でライセンス確認済み）。全テンプレートが同じ関数名を持つ必要があるため（#61参照）。
+#import "@preview/note-me:0.6.0": note, tip, important, warning, caution
+#let callout-fns = (note: note, tip: tip, important: important, warning: warning, caution: caution)
+#let callout(kind: "note", body) = (callout-fns.at(kind, default: note))(body)
+
 // 本文ページのヘッダー・フッター（#42）。template.typと同じ関数名でエクスポートし、build.py側が
 // テンプレート種別を意識せず同じ呼び出し方でチャプター単位の上書きを再発行できるようにする。
 #let render-header(header_text) = align(left)[#text(16pt, fill: luma(100))[#header_text]]
