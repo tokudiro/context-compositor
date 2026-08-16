@@ -12,6 +12,8 @@
 - `fit-image(path)`: 画像を1枚受け取り、はみ出さないよう自動縮小して配置する。
 - `callout(kind: "note", body)`: alert記法（`> [!NOTE]`等、[Markdownファイルの書き方](06_markdown_basics.md)を参照）が生成する呼び出し先。`kind`は`"note"`/`"tip"`/`"important"`/`"warning"`/`"caution"`のいずれか。同梱テンプレートは[note-me](https://github.com/FlandiaYingman/note-me)（MIT、`@preview/note-me:0.6.0`）に委譲する実装になっている。
 - `render-background(path)`: `document.background`/`chapters[].background`（下記）が渡す画像パス（または`none`）を受け取り、ページ背景として敷くコンテンツを返す。
+- `render-header(header_text, logo)`: `chapters[]`単位の上書き（下記）のたびに`build.py`が呼び出す。`logo`は`document.logo`/`chapters[].logo`が渡す画像パス（または`none`）。
+- `render-footer(footer_text, paginate)`: `render-header`と同様、`chapters[]`単位の上書きのたびに呼び出される。
 
 同梱の `templates/template.typ` をコピーして書き換えるのが早道です。
 
@@ -21,7 +23,7 @@
 
 ```
 conf(title:, subtitle:, author:, date:, paper_size:, landscape:,
-     graphviz:, header:, footer:, paginate:, background:, doc)
+     graphviz:, header:, footer:, paginate:, background:, logo:, doc)
 ```
 
 ## conf() の任意引数

@@ -26,11 +26,21 @@
 // build.py側が章ごとに#set page(header: render-header(...), footer: render-footer(...))を
 // 再発行する形で実現する（state()は使わない。#16の反省点。landscape/paper_sizeと同じ
 // 「明示指定を都度出し直す」パターンで、チャプターの並べ替えに対して安全）。
-#let render-header(header_text) = align(right)[
-  #text(8pt, fill: luma(100))[#header_text]
-  #v(0.5em)
-  #line(length: 100%, stroke: 0.5pt + luma(200))
-]
+// logo（#54）: 左にロゴ画像、右にheader_text。logoがnoneのときは従来どおり右寄せのみ。
+#let render-header(header_text, logo) = {
+  if logo != none {
+    grid(
+      columns: (auto, 1fr),
+      align: (left + horizon, right + horizon),
+      image(logo, height: 1.2em),
+      text(8pt, fill: luma(100))[#header_text],
+    )
+  } else {
+    align(right)[#text(8pt, fill: luma(100))[#header_text]]
+  }
+  v(0.5em)
+  line(length: 100%, stroke: 0.5pt + luma(200))
+}
 
 #let render-footer(footer_text, paginate) = {
   let page-num = context counter(page).display("1")
@@ -74,6 +84,7 @@
   footer: none,
   paginate: true,
   background: none,
+  logo: none,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -147,7 +158,7 @@
   set page(
     paper: paper_size,
     flipped: landscape,
-    header: render-header(if header != none { header } else { title }),
+    header: render-header(if header != none { header } else { title }, logo),
     footer: render-footer(footer, paginate),
     background: render-background(background),
   )

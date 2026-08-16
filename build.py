@@ -1189,26 +1189,28 @@ def _typst_str_or_none(value):
         return "none"
     return f'"{escape_string_literal(str(value))}"'
 
-def _resolve_background_path(path, base_dir, typst_root):
-    """document.background/chapters[].backgroundの相対パスを、project_dir基準からtypst_root起点の
-    ルート絶対パスへ変換する（5章: config.yaml内の相対パスはproject_dir基準。Markdown内画像の
-    _resolve_asset()とは基準ディレクトリが異なる）。仕様9章のFail-fast方針に従い、画像欠損は
-    即エラーとする。"""
+def _resolve_project_image_path(path, base_dir, typst_root, label):
+    """document.background/chapters[].background（#55）、document.logo/chapters[].logo（#54）の
+    相対パスを、project_dir基準からtypst_root起点のルート絶対パスへ変換する（5章: config.yaml内の
+    相対パスはproject_dir基準。Markdown内画像の_resolve_asset()とは基準ディレクトリが異なる）。
+    仕様9章のFail-fast方針に従い、画像欠損は即エラーとする。"""
     if not path:
         return None
     abs_path = os.path.normpath(os.path.join(base_dir, path))
     if not os.path.exists(abs_path):
-        print(f"[Error] Background image not found: {abs_path}")
+        print(f"[Error] {label} image not found: {abs_path}")
         sys.exit(1)
     return "/" + os.path.relpath(abs_path, typst_root).replace(os.sep, '/')
 
-def _page_set_fragment(paper, landscape, header, footer, paginate, background):
-    """paper/landscape/header/footer/paginate/backgroundをまとめた#set page(...)断片を組み立てる
-    （#42、#17、#55）。headerがNone（chapters[]/front-matterで明示的にnullを指定した場合のみ
-    起こりうる。グローバルの既定値は常にtitleへフォールバック済みでNoneにならない）なら
-    header自体を非表示にする。footerはrender-footer()側でNone/paginateの組み合わせを判定するため、
-    常にrender-footer()を呼ぶ。backgroundも同様にrender-background()側でNone判定する。"""
-    header_expr = "none" if header is None else f'render-header({_typst_str_or_none(header)})'
+def _page_set_fragment(paper, landscape, header, footer, paginate, background, logo):
+    """paper/landscape/header/footer/paginate/background/logoをまとめた#set page(...)断片を
+    組み立てる（#42、#17、#55、#54）。headerがNone（chapters[]/front-matterで明示的にnullを
+    指定した場合のみ起こりうる。グローバルの既定値は常にtitleへフォールバック済みでNoneにならない）
+    ならheader自体を非表示にする（logoも一緒に消える。ヘッダーごと消す指定のため妥当）。
+    footerはrender-footer()側でNone/paginateの組み合わせを判定するため、常にrender-footer()を
+    呼ぶ。backgroundも同様にrender-background()側でNone判定する。"""
+    header_expr = ("none" if header is None
+                    else f'render-header({_typst_str_or_none(header)}, {_typst_str_or_none(logo)})')
     footer_expr = f'render-footer({_typst_str_or_none(footer)}, {str(paginate).lower()})'
     background_expr = f'render-background({_typst_str_or_none(background)})'
     return (f'#set page(paper: "{paper}", flipped: {str(landscape).lower()}, '
@@ -1326,7 +1328,7 @@ def _prepare_template(config, tool_dir, project_dir, work_dir, typst_root):
 def _build_document_preamble(config, template_root_rel_path, graphviz_enabled, project_dir, typst_root):
     """document:設定からtypst_codeの冒頭（テンプレートのimportとconf()呼び出し）を組み立てる。
     戻り値は (preamble文字列, global_landscape, global_paper, cover_mode, global_table_header,
-    global_header, global_footer, global_paginate, global_background)。"""
+    global_header, global_footer, global_paginate, global_background, global_logo)。"""
     doc_config = config.get("document", {})
     global_landscape = str(doc_config.get('landscape', False)).lower() == 'true'
     global_paper = doc_config.get('paper_size', 'a4')
@@ -1339,7 +1341,9 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled, p
     global_paginate = str(doc_config.get('paginate', True)).lower() == 'true'
     # 本文ページの背景画像（#55）。header/footerと同じ「常にconf()へ渡す必須引数」パターンで、
     # chapters[]単位の上書きにも対応する（_page_set_fragment）。
-    global_background = _resolve_background_path(doc_config.get('background'), project_dir, typst_root)
+    global_background = _resolve_project_image_path(doc_config.get('background'), project_dir, typst_root, "Background")
+    # ヘッダーのロゴ画像（#54）。backgroundと全く同じパターン。
+    global_logo = _resolve_project_image_path(doc_config.get('logo'), project_dir, typst_root, "Logo")
 
     # 表紙の扱い: template=テンプレートの表紙のみ / replace=テンプレートの表紙でMarkdown先頭の
     # タイトルスライドを置き換える / markdown=Markdown側のみ / none=表紙なし。既定はnone（安定版前の
@@ -1388,12 +1392,13 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled, p
   footer: {_typst_str_or_none(global_footer)},
   paginate: {str(global_paginate).lower()},
   background: {_typst_str_or_none(global_background)},
+  logo: {_typst_str_or_none(global_logo)},
   doc,
 )
 
 """
     return (preamble, global_landscape, global_paper, cover_mode, global_table_header,
-            global_header, global_footer, global_paginate, global_background)
+            global_header, global_footer, global_paginate, global_background, global_logo)
 
 def _parse_chapter_entry(ch):
     """chaptersの1エントリを解析し、(ファイル/ディレクトリ名, 章固有設定のdict, 種別)を返す。
@@ -1416,25 +1421,28 @@ def _parse_chapter_entry(ch):
 
 def _render_aggregate_chapter(ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                                global_landscape, global_paper, current_header, current_footer, current_paginate,
-                               global_header, global_footer, global_paginate, current_background, global_background):
+                               global_header, global_footer, global_paginate, current_background, global_background,
+                               current_logo, global_logo):
     """aggregate: チャプター（YAML/JSONファイル群のテーブル集約）をTypstへ変換する。
     aggregateはYAML/JSONのテストケース集約であり、front-matter（Markdown固有の概念）は関係しない。
     戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper, 更新後のcurrent_header,
-    更新後のcurrent_footer, 更新後のcurrent_paginate, 更新後のcurrent_background)。"""
+    更新後のcurrent_footer, 更新後のcurrent_paginate, 更新後のcurrent_background, 更新後のcurrent_logo)。"""
     typst_code = ""
     ch_landscape = str(ch_dict.get("landscape", global_landscape)).lower() == 'true'
     ch_paper = ch_dict.get("paper_size", global_paper)
     ch_header = ch_dict.get("header", global_header)
     ch_footer = ch_dict.get("footer", global_footer)
     ch_paginate = str(ch_dict.get("paginate", global_paginate)).lower() == 'true'
-    ch_background = (_resolve_background_path(ch_dict["background"], renderer.base_dir, renderer.typst_root)
+    ch_background = (_resolve_project_image_path(ch_dict["background"], renderer.base_dir, renderer.typst_root, "Background")
                       if "background" in ch_dict else global_background)
-    if (ch_landscape, ch_paper, ch_header, ch_footer, ch_paginate, ch_background) != (
-            current_landscape, current_paper, current_header, current_footer, current_paginate, current_background):
-        typst_code += _page_set_fragment(ch_paper, ch_landscape, ch_header, ch_footer, ch_paginate, ch_background)
+    ch_logo = (_resolve_project_image_path(ch_dict["logo"], renderer.base_dir, renderer.typst_root, "Logo")
+               if "logo" in ch_dict else global_logo)
+    if (ch_landscape, ch_paper, ch_header, ch_footer, ch_paginate, ch_background, ch_logo) != (
+            current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo):
+        typst_code += _page_set_fragment(ch_paper, ch_landscape, ch_header, ch_footer, ch_paginate, ch_background, ch_logo)
         current_landscape, current_paper = ch_landscape, ch_paper
         current_header, current_footer, current_paginate = ch_header, ch_footer, ch_paginate
-        current_background = ch_background
+        current_background, current_logo = ch_background, ch_logo
 
     agg_path = os.path.join(inputs_dir, ch_file)
     typst_code += f'= {renderer.escape_typst(ch_dict.get("title", "Test Cases"))}\n\n'
@@ -1479,15 +1487,17 @@ def _render_aggregate_chapter(ch_dict, ch_file, inputs_dir, renderer, current_la
         print(f"[Error] Aggregate directory not found: {agg_path}")
         sys.exit(1)
 
-    return typst_code, current_landscape, current_paper, current_header, current_footer, current_paginate, current_background
+    return typst_code, current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo
 
 def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                               global_landscape, global_paper, is_first_chapter, cover_mode, global_table_header,
                               current_header, current_footer, current_paginate,
-                              global_header, global_footer, global_paginate, current_background, global_background):
+                              global_header, global_footer, global_paginate, current_background, global_background,
+                              current_logo, global_logo):
     """通常のチャプター（Markdown/YAML/JSON/プレーンテキスト等、#15の拡張子ディスパッチ対象）を
     Typstへ変換する。戻り値は (typst断片, 更新後のcurrent_landscape, 更新後のcurrent_paper,
-    更新後のcurrent_header, 更新後のcurrent_footer, 更新後のcurrent_paginate, 更新後のcurrent_background)。"""
+    更新後のcurrent_header, 更新後のcurrent_footer, 更新後のcurrent_paginate, 更新後のcurrent_background,
+    更新後のcurrent_logo)。"""
     md_path = os.path.join(inputs_dir, ch_file)
     if not os.path.exists(md_path):
         print(f"[Error] Chapter file not found: {md_path}")
@@ -1520,16 +1530,19 @@ def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_lan
     ch_header = ch_dict.get("header", front_matter.get("header", global_header))
     ch_footer = ch_dict.get("footer", front_matter.get("footer", global_footer))
     ch_paginate = str(ch_dict.get("paginate", front_matter.get("paginate", global_paginate))).lower() == 'true'
-    # 背景画像（#55）。パス値のためfront-matter経由の上書きはサポートしない（table_headerと同じ判断）。
-    ch_background = (_resolve_background_path(ch_dict["background"], renderer.base_dir, renderer.typst_root)
+    # 背景画像（#55）・ロゴ（#54）。パス値のためfront-matter経由の上書きはサポートしない
+    # （table_headerと同じ判断）。
+    ch_background = (_resolve_project_image_path(ch_dict["background"], renderer.base_dir, renderer.typst_root, "Background")
                       if "background" in ch_dict else global_background)
+    ch_logo = (_resolve_project_image_path(ch_dict["logo"], renderer.base_dir, renderer.typst_root, "Logo")
+               if "logo" in ch_dict else global_logo)
     typst_code = ""
-    if (ch_landscape, ch_paper, ch_header, ch_footer, ch_paginate, ch_background) != (
-            current_landscape, current_paper, current_header, current_footer, current_paginate, current_background):
-        typst_code += _page_set_fragment(ch_paper, ch_landscape, ch_header, ch_footer, ch_paginate, ch_background)
+    if (ch_landscape, ch_paper, ch_header, ch_footer, ch_paginate, ch_background, ch_logo) != (
+            current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo):
+        typst_code += _page_set_fragment(ch_paper, ch_landscape, ch_header, ch_footer, ch_paginate, ch_background, ch_logo)
         current_landscape, current_paper = ch_landscape, ch_paper
         current_header, current_footer, current_paginate = ch_header, ch_footer, ch_paginate
-        current_background = ch_background
+        current_background, current_logo = ch_background, ch_logo
 
     font_size = front_matter.get('font_size')
     if font_size:
@@ -1541,7 +1554,7 @@ def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_lan
     # 文書全体の表紙（title/subtitle/author/date）は常にconfig.yaml側のみが正。
     typst_code += "\n#pagebreak(weak: true)\n"
 
-    return typst_code, current_landscape, current_paper, current_header, current_footer, current_paginate, current_background
+    return typst_code, current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo
 
 def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path):
     """temp_build.typへ書き出してtypstコンパイルし、成功時は使い捨ての中間ファイルを削除する。"""
@@ -1595,7 +1608,7 @@ def build():
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
 
     (typst_code, global_landscape, global_paper, cover_mode, global_table_header,
-     global_header, global_footer, global_paginate, global_background) = _build_document_preamble(
+     global_header, global_footer, global_paginate, global_background, global_logo) = _build_document_preamble(
         config, template_root_rel_path, graphviz_enabled, project_dir, typst_root)
 
     # headerの実効グローバル既定値。document.headerが未指定ならテンプレート側と同じくtitleへ
@@ -1610,6 +1623,7 @@ def build():
     current_landscape, current_paper = global_landscape, global_paper
     current_header, current_footer, current_paginate = effective_global_header, global_footer, global_paginate
     current_background = global_background
+    current_logo = global_logo
     is_first_chapter = True
 
     try:
@@ -1617,27 +1631,31 @@ def build():
             ch_file, ch_dict, ch_type = _parse_chapter_entry(ch)
             if ch_type == "aggregate":
                 (fragment, current_landscape, current_paper,
-                 current_header, current_footer, current_paginate, current_background) = _render_aggregate_chapter(
+                 current_header, current_footer, current_paginate,
+                 current_background, current_logo) = _render_aggregate_chapter(
                     ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                     global_landscape, global_paper, current_header, current_footer, current_paginate,
-                    effective_global_header, global_footer, global_paginate, current_background, global_background)
+                    effective_global_header, global_footer, global_paginate, current_background, global_background,
+                    current_logo, global_logo)
             else:
                 (fragment, current_landscape, current_paper,
-                 current_header, current_footer, current_paginate, current_background) = _render_markdown_chapter(
+                 current_header, current_footer, current_paginate,
+                 current_background, current_logo) = _render_markdown_chapter(
                     ch_dict, ch_file, inputs_dir, renderer, current_landscape, current_paper,
                     global_landscape, global_paper, is_first_chapter, cover_mode, global_table_header,
                     current_header, current_footer, current_paginate,
-                    effective_global_header, global_footer, global_paginate, current_background, global_background)
+                    effective_global_header, global_footer, global_paginate, current_background, global_background,
+                    current_logo, global_logo)
             typst_code += fragment
             is_first_chapter = False
     finally:
         # mermaidレンダリング用に起動したヘッドレスブラウザを、エラー終了時も含め必ず片付ける（#35）。
         renderer.close()
 
-    if (current_landscape, current_paper, current_header, current_footer, current_paginate, current_background) != (
-            global_landscape, global_paper, effective_global_header, global_footer, global_paginate, global_background):
+    if (current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo) != (
+            global_landscape, global_paper, effective_global_header, global_footer, global_paginate, global_background, global_logo):
         typst_code += _page_set_fragment(
-            global_paper, global_landscape, effective_global_header, global_footer, global_paginate, global_background)
+            global_paper, global_landscape, effective_global_header, global_footer, global_paginate, global_background, global_logo)
 
     # 巻末の用語索引（#47）。全チャプター処理後、実際に[[用語]]が使われていた場合のみ追加する。
     if glossary_enabled and renderer.glossary_terms:

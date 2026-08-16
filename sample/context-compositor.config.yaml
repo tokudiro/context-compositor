@@ -6,6 +6,7 @@ document:
   cover: template  # 既定はnone（表紙なし）。このサンプルでは表紙ありを実演する
   toc: true        # 既定はfalse（目次なし）。このサンプルでは目次ありを実演する
   background: "images/draft-watermark.png"  # 本文ページの背景画像（#55）。DRAFT透かしの例
+  logo: "images/logo.png"  # ヘッダー左のロゴ画像（#54）
   landscape: false  # 全体を横にする場合は true にする
   paper_size: "a4"  # a3, b5 などの用紙サイズ指定
 

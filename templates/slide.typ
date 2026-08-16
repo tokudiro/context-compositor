@@ -26,7 +26,18 @@
 
 // 本文ページのヘッダー・フッター（#42）。template.typと同じ関数名でエクスポートし、build.py側が
 // テンプレート種別を意識せず同じ呼び出し方でチャプター単位の上書きを再発行できるようにする。
-#let render-header(header_text) = align(left)[#text(16pt, fill: luma(100))[#header_text]]
+// logo（#54）: template.typと同じ実装。
+#let render-header(header_text, logo) = if logo != none {
+  grid(
+    columns: (auto, auto),
+    column-gutter: 0.5em,
+    align: (left + horizon, left + horizon),
+    image(logo, height: 1.5em),
+    text(16pt, fill: luma(100))[#header_text],
+  )
+} else {
+  align(left)[#text(16pt, fill: luma(100))[#header_text]]
+}
 
 #let render-footer(footer_text, paginate) = {
   let page-num = align(right)[#text(16pt, fill: luma(100))[#context counter(page).display("1")]]
@@ -67,6 +78,7 @@
   footer: none,
   paginate: true,
   background: none,
+  logo: none,
   doc,
 ) = {
   // フォント設定（CJKフォントは build.py が取得・キャッシュした Noto Sans JP を --font-path 経由で渡す。
@@ -117,7 +129,7 @@
     paper: paper_size,
     flipped: landscape,
     margin: (x: 2cm, y: 1.5cm),
-    header: if header != none { render-header(header) } else { none },
+    header: if header != none { render-header(header, logo) } else { none },
     footer: render-footer(footer, paginate),
     background: render-background(background),
   )
