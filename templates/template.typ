@@ -49,6 +49,7 @@
   landscape: false,
   cover: true,
   cover_page_number: false,
+  toc: true,
   graphviz: true,
   header: none,
   footer: none,
@@ -100,23 +101,25 @@
   }
 
   // -------------------------
-  // 2. 目次 (Table of Contents)
+  // 2. 目次 (Table of Contents) : toc: false のときは省略する
   // -------------------------
-  set page(
-    paper: paper_size,
-    flipped: landscape,
-    margin: (x: 2cm, y: 2.5cm),
-    header: none,
-    footer: align(center)[#text(10pt)[- #context counter(page).display("i") -]]
-  )
-  counter(page).update(1) // 目次のページ番号を i から開始
+  if toc {
+    set page(
+      paper: paper_size,
+      flipped: landscape,
+      margin: (x: 2cm, y: 2.5cm),
+      header: none,
+      footer: align(center)[#text(10pt)[- #context counter(page).display("i") -]]
+    )
+    counter(page).update(1) // 目次のページ番号を i から開始
 
-  align(center)[
-    #text(18pt, weight: "bold")[目次]
-  ]
-  v(1.5em)
-  outline(title: none, indent: auto)
-  pagebreak()
+    align(center)[
+      #text(18pt, weight: "bold")[目次]
+    ]
+    v(1.5em)
+    outline(title: none, indent: auto)
+    pagebreak()
+  }
 
   // -------------------------
   // 3. 本文 (Body)

@@ -1314,6 +1314,10 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
         if cover_page_number is not None else ''
     )
 
+    # 目次の表示有無（#58）。未指定ならテンプレート自身の既定値（true）に任せ、引数自体を渡さない
+    toc = doc_config.get('toc')
+    toc_arg = f'  toc: {str(bool(toc)).lower()},\n' if toc is not None else ''
+
     date_str = doc_config.get("date", "")
     if date_str == "auto":
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -1332,7 +1336,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled):
   date: "{safe_date}",
   paper_size: "{global_paper}",
   landscape: {str(global_landscape).lower()},
-{cover_arg}{cover_page_number_arg}  graphviz: {str(graphviz_enabled).lower()},
+{cover_arg}{cover_page_number_arg}{toc_arg}  graphviz: {str(graphviz_enabled).lower()},
   header: {_typst_str_or_none(global_header)},
   footer: {_typst_str_or_none(global_footer)},
   paginate: {str(global_paginate).lower()},
