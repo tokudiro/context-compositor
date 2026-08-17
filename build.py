@@ -343,8 +343,21 @@ class TypstRenderer:
             j += 1
         return j + 1, ' '.join(text_parts)
 
+    def _consume_lead_image(self, tokens, pos):
+        """posが「画像1個だけの段落」（タイトルスライドの図版）ならそのブロックを読み飛ばし、
+        次の位置を返す。該当しなければposをそのまま返す。"""
+        if (pos + 2 >= len(tokens)
+                or tokens[pos].type != 'paragraph_open'
+                or tokens[pos + 1].type != 'inline'
+                or tokens[pos + 2].type != 'paragraph_close'):
+            return pos
+        children = tokens[pos + 1].children or []
+        if len(children) == 1 and children[0].type == 'image':
+            return pos + 3
+        return pos
+
     def _skip_leading_title(self, tokens):
-        """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす"""
+        """cover: replace/none 用に、先頭のタイトルブロック（画像1枚 + H1/H2と直後の区切り線）を読み飛ばす"""
         i = 0
         dropped = []
         # 先頭のHTMLコメント（Marpのディレクティブ等）は読み飛ばす。ただし警告は従来どおり出す
@@ -352,18 +365,26 @@ class TypstRenderer:
             self._handle_html_token(tokens[i])
             i += 1
 
-        i, title = self._consume_heading(tokens, i)
+        # タイトルの前に図版が1枚だけ置かれているタイトルスライド（画像 + H1 + H2）に対応する。
+        # ただしこの時点では見出しが続くかどうか未確定なので、実際に見出しが見つかったときだけ
+        # 画像も含めて読み飛ばす（見出しが無ければ画像はそのまま本文として残す）。
+        image_end = self._consume_lead_image(tokens, i)
+        title_start, title = self._consume_heading(tokens, image_end)
         if title is None:
             return 0
+        i = title_start
         dropped.append(title)
 
-        # 直後がさらに見出し(H1/H2)の場合、それをサブタイトルとして一緒に読み飛ばすのは
-        # そのすぐ後にhr（---）が続くときだけに限る。hrが無ければ、それは本文側の実見出し
-        # （例: "## 1. はじめに"）であり、タイトルスライドの一部ではないため触らない。
+        # 直後がさらに見出し(H1/H2)の場合、それをサブタイトルとして一緒に読み飛ばすのは、
+        # そのすぐ後にhr（---）が続くか、そこでこのチャプター（ファイル）が終わっているとき
+        # に限る。それ以外（続けて本文の段落が来る等）は、本文側の実見出し（例: "## 1. はじめに"）
+        # であり、タイトルスライドの一部ではないため触らない。
         next_pos, subtitle = self._consume_heading(tokens, i)
-        if subtitle is not None and next_pos < len(tokens) and tokens[next_pos].type == 'hr':
+        if subtitle is not None and (next_pos >= len(tokens) or tokens[next_pos].type == 'hr'):
             dropped.append(subtitle)
-            i = next_pos + 1
+            i = next_pos
+            if i < len(tokens) and tokens[i].type == 'hr':
+                i += 1
             print(f"[Info] Cover: replaced the leading title slide of {self.current_file} ({' / '.join(dropped)})")
             return i
 
