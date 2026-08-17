@@ -330,6 +330,19 @@ class TypstRenderer:
             ")\n\n"
         )
 
+    def _consume_heading(self, tokens, pos):
+        """posがheading_open（H1/H2まで）ならそのブロックを読み飛ばし、(次の位置, 見出しテキスト)を返す。
+        該当しなければ (pos, None)。"""
+        if pos >= len(tokens) or tokens[pos].type != 'heading_open' or int(tokens[pos].tag[1:]) > 2:
+            return pos, None
+        j = pos
+        text_parts = []
+        while j < len(tokens) and tokens[j].type != 'heading_close':
+            if tokens[j].type == 'inline':
+                text_parts.append(tokens[j].content)
+            j += 1
+        return j + 1, ' '.join(text_parts)
+
     def _skip_leading_title(self, tokens):
         """cover: replace/none 用に、先頭のタイトルブロック（H1/H2と直後の区切り線）を読み飛ばす"""
         i = 0
@@ -338,15 +351,22 @@ class TypstRenderer:
         while i < len(tokens) and tokens[i].type in ['html_block', 'html_inline']:
             self._handle_html_token(tokens[i])
             i += 1
-        while i < len(tokens) and tokens[i].type == 'heading_open' and int(tokens[i].tag[1:]) <= 2:
-            j = i
-            while j < len(tokens) and tokens[j].type != 'heading_close':
-                if tokens[j].type == 'inline':
-                    dropped.append(tokens[j].content)
-                j += 1
-            i = j + 1
-        if not dropped:
+
+        i, title = self._consume_heading(tokens, i)
+        if title is None:
             return 0
+        dropped.append(title)
+
+        # 直後がさらに見出し(H1/H2)の場合、それをサブタイトルとして一緒に読み飛ばすのは
+        # そのすぐ後にhr（---）が続くときだけに限る。hrが無ければ、それは本文側の実見出し
+        # （例: "## 1. はじめに"）であり、タイトルスライドの一部ではないため触らない。
+        next_pos, subtitle = self._consume_heading(tokens, i)
+        if subtitle is not None and next_pos < len(tokens) and tokens[next_pos].type == 'hr':
+            dropped.append(subtitle)
+            i = next_pos + 1
+            print(f"[Info] Cover: replaced the leading title slide of {self.current_file} ({' / '.join(dropped)})")
+            return i
+
         if i < len(tokens) and tokens[i].type == 'hr':
             i += 1
         # サイレントに本文を捨てないよう、取り除いた内容は必ずログに出す
