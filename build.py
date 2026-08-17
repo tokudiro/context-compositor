@@ -1273,12 +1273,29 @@ def find_config_in_cwd():
 def parse_args():
     parser = argparse.ArgumentParser(description="Markdown -> Typst -> PDF ドキュメントビルダー")
     parser.add_argument("--config", help="設定ファイル(yaml/json)へのパス。省略時はカレントディレクトリの context-compositor.config.yaml/.json を探す。")
-    return parser.parse_args()
+    parser.add_argument("--config-list", help="ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイル。空行と'#'で始まる行は無視される。--configとは同時指定できない。相対パスはこのファイル自身の置き場所が基準。")
+    args = parser.parse_args()
+    if args.config and args.config_list:
+        parser.error("--config と --config-list は同時に指定できません。")
+    return args
 
-def _load_project_config(args):
-    """--configまたはカレントディレクトリから設定ファイルを読み込み、(project_dir, config, chapters)を返す。"""
-    if args.config:
-        config_path = os.path.abspath(args.config)
+def _read_config_list(list_path):
+    """--config-listのファイルを読み、configファイルパスのリストを返す（コメント行・空行を除く）。"""
+    list_path = os.path.abspath(list_path)
+    base_dir = os.path.dirname(list_path)
+    paths = []
+    with open(list_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            paths.append(line if os.path.isabs(line) else os.path.join(base_dir, line))
+    return paths
+
+def _load_project_config(config_path):
+    """configパス（Noneならカレントディレクトリから探索）から設定ファイルを読み込み、(project_dir, config, chapters)を返す。"""
+    if config_path:
+        config_path = os.path.abspath(config_path)
     else:
         config_path = find_config_in_cwd()
         if not config_path:
@@ -1585,10 +1602,23 @@ def build():
     args = parse_args()
     font_dir = ensure_fonts(tool_dir)
 
+    if args.config_list:
+        config_paths = _read_config_list(args.config_list)
+        if not config_paths:
+            print(f"[Error] --config-list {args.config_list} に有効なconfigパスがありません。")
+            sys.exit(1)
+        # いずれかのビルドが失敗した時点でsys.exit(1)により停止する（_load_project_config等が担う）。
+        for config_path in config_paths:
+            print(f"[Build] {config_path}")
+            _build_one(tool_dir, font_dir, config_path)
+    else:
+        _build_one(tool_dir, font_dir, args.config)
+
+def _build_one(tool_dir, font_dir, config_path):
     # 汎用ツールとして、呼び出し元プロジェクトが持つ設定ファイルを指定できるようにする。
     # inputs.dir/output.dir などプロジェクト固有の相対パスは、このconfigファイルの
     # 置き場所(project_dir)を基準に解決する。templates/等ツール自身のリソースはtool_dir基準のまま。
-    project_dir, config, chapters = _load_project_config(args)
+    project_dir, config, chapters = _load_project_config(config_path)
 
     # plugins: Graphviz/PlantUML/Mermaidの有効・無効切り替え（6章、#21）。未指定時は既存動作を
     # 維持する既定値（graphviz/mermaid/plantumlはいずれも常時有効）。

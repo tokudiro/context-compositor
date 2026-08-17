@@ -28,3 +28,23 @@ template:
   ```
 
 独自テンプレートの書き方は「独自テンプレートを使う」の章を参照してください。
+
+# 複数PDFをまとめて出力する
+
+`context-compositor` は「1 `config.yaml` = 1 PDF」が基本の単位です。複数のPDFが必要な場合は、`--config-list` にconfigファイルのパスを1行1件で列挙したテキストファイルを渡します。
+
+```
+# configs.txt
+# 空行と「#」で始まる行は無視される
+docs/manual_mainte.config.yaml
+docs/manual_hidden.config.yaml
+docs/manual_inspection.config.yaml
+```
+
+```bash
+python build.py --config-list configs.txt
+```
+
+各行の相対パスは、`configs.txt` 自身の置き場所が基準になります（他の設定ファイルの相対パス基準と同じルール）。`--config` と `--config-list` は同時に指定できません。
+
+いずれかのPDFのビルドが失敗すると、その時点で処理を止めます（残りのconfigは実行されません）。どのconfigの処理中に失敗したかは、標準出力の `[Build] <config path>` 行で確認できます。
