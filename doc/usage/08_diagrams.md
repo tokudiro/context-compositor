@@ -19,7 +19,7 @@ Alice -> Bob: Hello
 ```
 ````
 
-`plugins:` で無効化していない限り自動でレンダリングされます（`graphviz`/`mermaid`/`plantuml`とも既定`true`）。Mermaid図をテキストと横並びにしたい場合は独自のレイアウト記法が使えます。
+`plugins:` で無効化していない限り自動でレンダリングされます（`graphviz`/`mermaid`/`plantuml`とも既定`true`）。図をテキストと横並びにしたい場合や、2つの図を比較したい場合は独自のレイアウト記法が使えます。
 
 ## ローカルにブラウザ／Javaが無い場合
 
@@ -42,4 +42,15 @@ graph TD
 :::
 ````
 
-`::: layout-compare ... :::` は2つのMermaid図を左右に並べます（横長の図には不向き）。
+`::: layout-right`/`::: layout-compare`の中に置ける図は、Mermaidに限らずPlantUML・Graphviz（`dot`/`graphviz`フェンス）・Markdown画像（`![alt](path)`、単独行のみ）のいずれも使えます。`::: layout-compare ... :::` は2つの図を左右に並べます（横長の図には不向き）。2つの種類を混在させる（例: 片方はMermaid図、もう片方は写真）こともできます。
+
+````markdown
+::: layout-compare
+```mermaid
+graph TD
+  A --> B
+```
+
+![完成イメージ](screenshot.png)
+:::
+````
