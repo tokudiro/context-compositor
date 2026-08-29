@@ -112,12 +112,21 @@ class TypstRenderer:
     MARP_ONLY_KEYS = {'marp', 'theme', 'size', 'class', 'style', 'backgroundColor'}
 
     # ::: layout-right / layout-compare ... ::: ブロック。
-    # - layout-right: 中のmermaid図を右、それ以外のテキストを左に配置する。
-    # - layout-compare: 中の2つのmermaid図を左右に並べる（横長の図同士の比較用）。
+    # - layout-right: 中の図（mermaid/plantuml/dot/graphvizフェンス、または単独行のMarkdown画像）
+    #   を右、それ以外のテキストを左に配置する。
+    # - layout-compare: 中の2つの図を左右に並べる（横長の図同士の比較用）。図の種類は混在可（例:
+    #   片方mermaid・もう片方は写真）。
     # markdown-it の通常のASTフローでは「直前・直後のテキストと図をまとめて2カラム化する」表現が
-    # 難しいため、通常のトークン処理に入る前の生テキスト段階で切り出して個別に処理する。
+    # 難しいため、通常のトークン処理に入る前の生テキスト段階で切り出して個別に処理する（#11）。
+    # 対応する図の種類をmermaidだけに限らず一般化したもの（#77）。
     LAYOUT_BLOCK_RE = re.compile(r'^::: *(layout-right|layout-compare) *\r?\n(.*?)\r?\n::: *\r?$', re.MULTILINE | re.DOTALL)
-    MERMAID_FENCE_RE = re.compile(r'```mermaid\r?\n(.*?)\r?\n```', re.DOTALL)
+    # フェンス（mermaid/plantuml/dot/graphviz）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
+    # いずれかにマッチする。画像側は行全体にアンカーし、文中に埋め込まれたインライン画像を誤って
+    # 抜き出さないようにする（テキストの前後を単純に連結する都合上、行の一部だけを抜くと文が壊れる）。
+    DIAGRAM_OR_IMAGE_RE = re.compile(
+        r'```(?P<lang>mermaid|plantuml|dot|graphviz)\r?\n(?P<code>.*?)\r?\n```'
+        r'|^[ \t]*(?P<image>!\[[^\]]*\]\([^)\n]+\))[ \t]*\r?$',
+        re.MULTILINE | re.DOTALL)
 
     # Marpディレクティブコメント。7章の要件（Marp原稿との共用）を満たすため認識はするが、
     # 何も反映しない（#41、_handle_html_tokenを参照）。#42でheader/footer/paginateがfront-matter/
@@ -281,15 +290,37 @@ class TypstRenderer:
         start = self._skip_leading_title(tokens) if drop_leading_title else 0
         return self.render_tokens(tokens, start)
 
+    def _render_diagram_fence(self, lang, code):
+        """```mermaid/```plantuml/```dot/```graphvizフェンスの内容をTypstコードへ変換する。
+        通常のMarkdownフロー（render_tokens）とlayout-right/layout-compareブロックの双方から
+        共通で呼べるようにした処理（#77）。mermaid/plantumlはPython側でSVGを事前生成して
+        画像として埋め込むが、dot/graphvizはTypstテンプレート側のshowルール（diagraph）が
+        コンパイル時に遅延描画するため、ここでは素のraw()化（_render_raw_text）に任せればよい。"""
+        if lang == 'mermaid':
+            return self._render_mermaid(code)
+        elif lang == 'plantuml':
+            return self._render_plantuml(code)
+        return self._render_raw_text(code, lang)
+
+    def _render_diagram_or_image_match(self, m):
+        """DIAGRAM_OR_IMAGE_REの1マッチをTypstコードへ変換する。フェンスは_render_diagram_fenceへ、
+        単独行のMarkdown画像は通常の画像処理（alt|width=/height=構文込み）をそのまま再利用するため
+        _render_markdown_segmentに委譲する（#77）。"""
+        if m.group('lang'):
+            return self._render_diagram_fence(m.group('lang'), m.group('code'))
+        return self._render_markdown_segment(m.group('image'), False).strip()
+
     def _render_layout_block(self, inner_text):
-        """::: layout-right ... ::: ブロックを、左=テキスト／右=画像の2カラムgridへ変換する"""
-        fence_match = self.MERMAID_FENCE_RE.search(inner_text)
-        if not fence_match:
-            print(f"[Error] 'layout-right' block in {self.current_file} must contain exactly one ```mermaid fence.")
+        """::: layout-right ... ::: ブロックを、左=テキスト／右=図（mermaid/plantuml/dot/graphviz
+        またはMarkdown画像）の2カラムgridへ変換する"""
+        match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
+        if not match:
+            print(f"[Error] 'layout-right' block in {self.current_file} must contain exactly one "
+                  "```mermaid/```plantuml/```dot/```graphviz fence or a standalone image.")
             sys.exit(1)
-        surrounding_md = (inner_text[:fence_match.start()] + inner_text[fence_match.end():]).strip()
+        surrounding_md = (inner_text[:match.start()] + inner_text[match.end():]).strip()
         text_typst = self._render_markdown_segment(surrounding_md, False).strip()
-        image_typst = self._render_mermaid(fence_match.group(1)).strip()
+        image_typst = self._render_diagram_or_image_match(match).strip()
         # テキストは短めなことが多く、画像側により多くの幅を渡した方が図が読みやすいため 35:65 とする
         return (
             "#grid(\n"
@@ -302,24 +333,26 @@ class TypstRenderer:
         )
 
     def _render_compare_block(self, inner_text):
-        """::: layout-compare ... ::: ブロックを、2つのmermaid図を左右に並べた2カラムgridへ変換する。
+        """::: layout-compare ... ::: ブロックを、2つの図（mermaid/plantuml/dot/graphvizまたは
+        Markdown画像。種類は混在可）を左右に並べた2カラムgridへ変換する。
         各図の直前にあるテキスト（キャプション）は、その図と同じ列にまとめて配置する。"""
-        fences = list(self.MERMAID_FENCE_RE.finditer(inner_text))
-        if len(fences) != 2:
-            print(f"[Error] 'layout-compare' block in {self.current_file} must contain exactly two ```mermaid fences (found {len(fences)}).")
+        matches = list(self.DIAGRAM_OR_IMAGE_RE.finditer(inner_text))
+        if len(matches) != 2:
+            print(f"[Error] 'layout-compare' block in {self.current_file} must contain exactly two "
+                  f"```mermaid/```plantuml/```dot/```graphviz fences or images (found {len(matches)}).")
             sys.exit(1)
         cells = []
         prev_end = 0
-        for i, fence in enumerate(fences):
-            caption_md = inner_text[prev_end:fence.start()].strip()
+        for i, m in enumerate(matches):
+            caption_md = inner_text[prev_end:m.start()].strip()
             # 2番目以降の図の後ろに残ったテキストは、最後の列にまとめて含める
-            trailing_md = inner_text[fences[-1].end():].strip() if i == len(fences) - 1 else ""
+            trailing_md = inner_text[matches[-1].end():].strip() if i == len(matches) - 1 else ""
             caption_typst = self._render_markdown_segment(caption_md, False).strip() if caption_md else ""
-            image_typst = self._render_mermaid(fence.group(1)).strip()
+            image_typst = self._render_diagram_or_image_match(m).strip()
             trailing_typst = self._render_markdown_segment(trailing_md, False).strip() if trailing_md else ""
             cell = "\n\n".join(t for t in [caption_typst, image_typst, trailing_typst] if t)
             cells.append(cell)
-            prev_end = fence.end()
+            prev_end = m.end()
         columns_typst = ",\n".join(f"  [{cell}]" for cell in cells)
         return (
             "#grid(\n"
@@ -498,10 +531,8 @@ class TypstRenderer:
                         print(f"[Error] Security: 'typst-exec' is allowed only under a 'reviewed/' directory ({self.current_file}).")
                         sys.exit(1)
                     result.append(f"{t.content}\n\n")
-                elif lang == 'mermaid':
-                    result.append(self._render_mermaid(t.content))
-                elif lang == 'plantuml':
-                    result.append(self._render_plantuml(t.content))
+                elif lang in ('mermaid', 'plantuml'):
+                    result.append(self._render_diagram_fence(lang, t.content))
                 else:
                     # ```` ``` ````フェンス構文で直接組み立てると、コード内容自体に```が
                     # 含まれる場合にTypst側のフェンスが早期に閉じて壊れる。文字列リテラルとして
