@@ -78,10 +78,10 @@ graph TD
 :::
 ````
 
-左右の比率を変えたい場合は、末尾に`-左:右`の数字を付けます（例: `layout-right-30:70`）。省略時は`layout-right`がテキスト35:図65、`layout-left`が図65:テキスト35です。数字は比率として扱われるだけなので、合計が100である必要はありません（`3:7`と`30:70`は同じ見た目になります）。
+左右の比率を変えたい場合は、ブロック名の後ろに`{left=... right=...}`を付けます（例: `layout-right {left=30 right=70}`）。省略時は`layout-right`がテキスト35:図65、`layout-left`が図65:テキスト35です。数字は比率として扱われるだけなので、合計が100である必要はありません（`{left=3 right=7}`と`{left=30 right=70}`は同じ見た目になります）。片方だけ指定した場合、もう片方は省略時の既定値のままです。
 
 ````markdown
-::: layout-right-30:70
+::: layout-right {left=30 right=70}
 テキストを控えめに、図を広めに配置します。
 
 ```mermaid
@@ -120,7 +120,7 @@ graph TD
 
 ## layout-columns: 箇条書き等をN列に分割
 
-中身（任意のMarkdown）をN列に流し込みます。列数は省略時2列、`layout-columns-3`のように末尾に数字を付けるとN列にできます。
+中身（任意のMarkdown）をN列に流し込みます。列数は省略時2列、`layout-columns {n=3}`のように`{n=...}`を付けるとN列にできます。
 
 ````markdown
 ::: layout-columns
@@ -130,7 +130,7 @@ graph TD
 - 項目4
 :::
 
-::: layout-columns-3
+::: layout-columns {n=3}
 - Alpha
 - Beta
 - Gamma
