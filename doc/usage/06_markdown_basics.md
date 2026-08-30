@@ -84,6 +84,27 @@ GitHub形式のalert記法（`> [!NOTE]`等）で、本文と区別した囲み�
 - コードスパン（`` `[[example]]` ``）やコードブロック内の`[[example]]`は対象外です（検出されません）。
 - `[[表示テキスト|用語]]`のような区切り記法（表示と索引登録名を分ける）は、使い方が分かりにくいため非対応です。表示テキストと索引登録名は常に同一です。
 
+## 画像: サイズ・配置指定
+
+`![alt](path)`のalt部分に`|`区切りで独自属性を書くと、サイズや配置を指定できます。
+
+```markdown
+![説明|width=50%](image.png)
+![説明|width=50%|height=30%](image.png)
+![説明|align=center](image.png)
+![説明|align=center|height=30%](image.png)
+```
+
+| 属性 | 内容 |
+| --- | --- |
+| `width=...` | 画像の幅（TypstのサイズまたはCJK単位でも可、例: `50%`、`8cm`） |
+| `height=...` | 画像の高さ（同上） |
+| `align=left` / `align=center` / `align=right` | 画像の左寄せ・中央寄せ・右寄せ（[#75](https://github.com/tokudiro/context-compositor/issues/75)） |
+
+- `align`を指定しない場合の見た目は変わらず、これまでどおり左寄せです。
+- `width`/`height`と`align`は組み合わせて指定できます（順不同）。
+- Mermaid/PlantUML/Graphvizのフェンス（「図表（Mermaid / Graphviz / PlantUML）」の章）には`align`は無く、常に中央寄せです。
+
 ## front-matter
 
 Markdownファイルの冒頭に `---` で囲んで書きます。
