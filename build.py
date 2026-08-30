@@ -111,9 +111,13 @@ class TypstRenderer:
     # （chapters[]の明示指定が無い場合のみ使われる）ため、ここには含めない。
     MARP_ONLY_KEYS = {'marp', 'theme', 'size', 'class', 'style', 'backgroundColor'}
 
-    # ::: layout-right / layout-compare / layout-feature / layout-columns[-N] ... ::: ブロック。
+    # ::: layout-right / layout-left / layout-compare / layout-feature / layout-columns[-N] ... :::
+    # ブロック。
     # - layout-right: 中の図（mermaid/plantuml/dot/graphvizフェンス、または単独行のMarkdown画像）
-    #   を右、それ以外のテキストを左に配置する。
+    #   を右、それ以外のテキストを左に配置する。末尾に`-N:M`（例: `layout-right-30:70`）を付けると
+    #   左:右の比率（Typstのfr単位。合計100である必要はない）を指定できる。省略時は35:65（#81）。
+    # - layout-left: layout-rightの左右反転版（図を左、テキストを右）。比率記法は同じで、省略時は
+    #   65:35（#81）。
     # - layout-compare: 中の2つの図を左右に並べる（横長の図同士の比較用）。図の種類は混在可（例:
     #   片方mermaid・もう片方は写真）。
     # - layout-feature: 写真（または図）をフルブリードで敷き、下部にキャッチコピーを重ねる（#78）。
@@ -122,7 +126,8 @@ class TypstRenderer:
     # 難しいため、通常のトークン処理に入る前の生テキスト段階で切り出して個別に処理する（#11）。
     # 対応する図の種類をmermaidだけに限らず一般化したもの（#77）。
     LAYOUT_BLOCK_RE = re.compile(
-        r'^::: *(layout-right|layout-compare|layout-feature|layout-columns(?:-[0-9]+)?) *\r?\n(.*?)\r?\n::: *\r?$',
+        r'^::: *((?:layout-right|layout-left)(?:-[0-9]+:[0-9]+)?|layout-compare|layout-feature|'
+        r'layout-columns(?:-[0-9]+)?) *\r?\n(.*?)\r?\n::: *\r?$',
         re.MULTILINE | re.DOTALL)
     # フェンス（mermaid/plantuml/dot/graphviz）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
     # いずれかにマッチする。画像側は行全体にアンカーし、文中に埋め込まれたインライン画像を誤って
@@ -277,8 +282,12 @@ class TypstRenderer:
                 output.append(self._render_markdown_segment(md_before, drop_leading_title and first_segment))
                 first_segment = False
             block_kind, block_body = m.group(1), m.group(2)
-            if block_kind == 'layout-right':
-                output.append(self._render_layout_block(block_body))
+            if block_kind == 'layout-right' or block_kind.startswith('layout-right-'):
+                output.append(self._render_layout_block(block_body, flip=False,
+                                                          ratio=self._parse_layout_ratio(block_kind, (35, 65))))
+            elif block_kind == 'layout-left' or block_kind.startswith('layout-left-'):
+                output.append(self._render_layout_block(block_body, flip=True,
+                                                          ratio=self._parse_layout_ratio(block_kind, (65, 35))))
             elif block_kind == 'layout-compare':
                 output.append(self._render_compare_block(block_body))
             elif block_kind == 'layout-feature':
@@ -318,25 +327,37 @@ class TypstRenderer:
             return self._render_diagram_fence(m.group('lang'), m.group('code'))
         return self._render_markdown_segment(m.group('image'), False).strip()
 
-    def _render_layout_block(self, inner_text):
-        """::: layout-right ... ::: ブロックを、左=テキスト／右=図（mermaid/plantuml/dot/graphviz
-        またはMarkdown画像）の2カラムgridへ変換する"""
+    def _parse_layout_ratio(self, block_kind, default):
+        """'layout-right-30:70'のようなブロック名末尾の`-N:M`から(左, 右)のfr比率を取り出す。
+        末尾指定が無ければdefaultをそのまま返す（#81）。数値の妥当性チェックは行わない
+        （LAYOUT_BLOCK_REの正規表現`[0-9]+:[0-9]+`に一致した時点で構文的には十分なため、
+        layout-columns-Nと同様バリデーションは追加しない）。"""
+        m = re.search(r'-([0-9]+):([0-9]+)$', block_kind)
+        return (int(m.group(1)), int(m.group(2))) if m else default
+
+    def _render_layout_block(self, inner_text, flip=False, ratio=(35, 65)):
+        """::: layout-right / layout-left ... ::: ブロックを、テキストと図（mermaid/plantuml/dot/
+        graphvizまたはMarkdown画像）の2カラムgridへ変換する。flip=Trueならlayout-leftとして
+        図を左・テキストを右に配置する（#81）。ratioは(左, 右)のfr比率"""
+        block_name = 'layout-left' if flip else 'layout-right'
         match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
         if not match:
-            print(f"[Error] 'layout-right' block in {self.current_file} must contain exactly one "
+            print(f"[Error] '{block_name}' block in {self.current_file} must contain exactly one "
                   "```mermaid/```plantuml/```dot/```graphviz fence or a standalone image.")
             sys.exit(1)
         surrounding_md = (inner_text[:match.start()] + inner_text[match.end():]).strip()
         text_typst = self._render_markdown_segment(surrounding_md, False).strip()
         image_typst = self._render_diagram_or_image_match(match).strip()
-        # テキストは短めなことが多く、画像側により多くの幅を渡した方が図が読みやすいため 35:65 とする
+        left_fr, right_fr = ratio
+        cells = [image_typst, text_typst] if flip else [text_typst, image_typst]
+        align = "(center + horizon, left + top)" if flip else "(left + top, center + horizon)"
         return (
             "#grid(\n"
-            "  columns: (35fr, 65fr),\n"
+            f"  columns: ({left_fr}fr, {right_fr}fr),\n"
             "  column-gutter: 1.5em,\n"
-            "  align: (left + top, center + horizon),\n"
-            f"  [{text_typst}],\n"
-            f"  [{image_typst}],\n"
+            f"  align: {align},\n"
+            f"  [{cells[0]}],\n"
+            f"  [{cells[1]}],\n"
             ")\n\n"
         )
 

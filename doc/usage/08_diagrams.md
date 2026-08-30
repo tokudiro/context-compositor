@@ -44,6 +44,32 @@ graph TD
 
 `::: layout-right`/`::: layout-compare`の中に置ける図は、Mermaidに限らずPlantUML・Graphviz（`dot`/`graphviz`フェンス）・Markdown画像（`![alt](path)`、単独行のみ）のいずれも使えます。`::: layout-compare ... :::` は2つの図を左右に並べます（横長の図には不向き）。2つの種類を混在させる（例: 片方はMermaid図、もう片方は写真）こともできます。
 
+図を左・テキストを右に置きたい場合は`layout-right`の左右反転版`layout-left`が使えます。中に置ける図の種類・書式は`layout-right`と同じです。
+
+````markdown
+::: layout-left
+左に図、右にこのテキストが並びます。
+
+```mermaid
+graph TD
+  A --> B
+```
+:::
+````
+
+左右の比率を変えたい場合は、末尾に`-左:右`の数字を付けます（例: `layout-right-30:70`）。省略時は`layout-right`がテキスト35:図65、`layout-left`が図65:テキスト35です。数字は比率として扱われるだけなので、合計が100である必要はありません（`3:7`と`30:70`は同じ見た目になります）。
+
+````markdown
+::: layout-right-30:70
+テキストを控えめに、図を広めに配置します。
+
+```mermaid
+graph TD
+  A --> B
+```
+:::
+````
+
 ````markdown
 ::: layout-compare
 ```mermaid
