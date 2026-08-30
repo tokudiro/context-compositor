@@ -13,6 +13,26 @@
   }
 })
 
+// Graphviz（diagraph、#82でwidth/height明示指定に対応するためconf()の外へ出し、
+// build.py生成コードから直接呼べるようエクスポートした。conf()内のshow raw.where(lang: "dot")
+// ルールは、width/height未指定の呼び出し（自動縮小のみ）としてこの関数をそのまま使う）。
+#import "@preview/diagraph:0.3.7": render
+#let render-graph(code, width: none, height: none) = if width != none or height != none {
+  render(code,
+    width: if width != none { width } else { auto },
+    height: if height != none { height } else { auto })
+} else {
+  layout(size => context {
+    let graph = render(code)
+    let g-size = measure(graph)
+    if g-size.width > size.width {
+      render(code, width: 100%)
+    } else {
+      graph
+    }
+  })
+}
+
 // GitHub形式のalert記法（`> [!NOTE]`等、#61）。build.py側がblockquoteの先頭行から種別を検出し、
 // callout(kind: "note")[...]のようなコードを生成する。実体はnote-me（MIT、@preview/note-me:0.6.0。
 // #63でライセンス確認済み）にそのまま委譲する。全テンプレートが同じ関数名を持つ必要があるため
@@ -95,18 +115,7 @@
   // graphviz: false のときは既定のraw表示（素のコード表示）にフォールバックする。
   // showルール自体は常時登録する（ifブロックの中で宣言すると、ブロックを抜けた
   // doc側には効かなくなる。show/setはブロックスコープで閉じるため）。
-  import "@preview/diagraph:0.3.7": render
-
-  let render-graph(code) = layout(size => context {
-    let graph = render(code)
-    let g-size = measure(graph)
-    if g-size.width > size.width {
-      render(code, width: 100%)
-    } else {
-      graph
-    }
-  })
-
+  // render-graph()自体はモジュールのトップレベルで定義済み（#82でwidth/height対応のため移動）。
   show raw.where(lang: "dot"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
   show raw.where(lang: "graphviz"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
 

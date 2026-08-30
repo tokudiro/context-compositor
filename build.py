@@ -132,10 +132,14 @@ class TypstRenderer:
     # フェンス（mermaid/plantuml/dot/graphviz）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
     # いずれかにマッチする。画像側は行全体にアンカーし、文中に埋め込まれたインライン画像を誤って
     # 抜き出さないようにする（テキストの前後を単純に連結する都合上、行の一部だけを抜くと文が壊れる）。
+    # 言語名の後ろに`{width=50%}`のようなPandoc風のサイズ指定属性を書ける（#82）。
     DIAGRAM_OR_IMAGE_RE = re.compile(
-        r'```(?P<lang>mermaid|plantuml|dot|graphviz)\r?\n(?P<code>.*?)\r?\n```'
+        r'```(?P<lang>mermaid|plantuml|dot|graphviz)(?P<attrs>[ \t]+\{[^}\r\n]*\})?[ \t]*\r?\n(?P<code>.*?)\r?\n```'
         r'|^[ \t]*(?P<image>!\[[^\]]*\]\([^)\n]+\))[ \t]*\r?$',
         re.MULTILINE | re.DOTALL)
+    # フェンスのinfo string（'mermaid'や'{width=50% height=8cm}'の中身）からwidth=/height=を
+    # 取り出す。値に空白は使えない前提（Typstの寸法値・パーセントはいずれも空白を含まないため）。
+    FENCE_ATTR_RE = re.compile(r'(\w+)=([^\s{}]+)')
 
     # Marpディレクティブコメント。7章の要件（Marp原稿との共用）を満たすため認識はするが、
     # 何も反映しない（#41、_handle_html_tokenを参照）。#42でheader/footer/paginateがfront-matter/
@@ -266,6 +270,21 @@ class TypstRenderer:
         lang_arg = f'lang: "{lang}", ' if lang else ''
         return f'#raw("{escaped}", {lang_arg}block: true)\n\n'
 
+    def _render_graphviz(self, lang, code, width=None, height=None):
+        """```dot/```graphvizフェンスの内容をTypstコードへ変換する。width/height未指定時は
+        raw()化するだけで、Typst側のshow raw.where(lang: "dot"/"graphviz")ショールール
+        （テンプレート側のrender-graph、ページ幅超過時のみ自動縮小）に描画を委ねる。showルールは
+        it.text（コード文字列）しか受け取れずwidth/heightを渡す経路が無いため、明示指定時は
+        raw()経由をやめ、テンプレートが公開しているrender-graph()を直接呼び出すコードを生成する
+        （#82）。"""
+        if width is None and height is None:
+            return self._render_raw_text(code, lang)
+        escaped = (code.replace('\\', '\\\\').replace('"', '\\"')
+                       .replace('\r\n', '\n').replace('\n', '\\n'))
+        width_arg = f', width: {width}' if width else ''
+        height_arg = f', height: {height}' if height else ''
+        return f'#align(center)[#render-graph("{escaped}"{width_arg}{height_arg})]\n\n'
+
     def render(self, text, filepath="", drop_leading_title=False):
         self.current_file = filepath
         self.current_dir = os.path.dirname(os.path.abspath(filepath)) if filepath else self.base_dir
@@ -307,24 +326,37 @@ class TypstRenderer:
         start = self._skip_leading_title(tokens) if drop_leading_title else 0
         return self.render_tokens(tokens, start)
 
-    def _render_diagram_fence(self, lang, code):
+    def _parse_size_attrs(self, attrs_str):
+        """フェンスのinfo string中の属性部分（例: '{width=50% height=8cm}'）からwidth/heightを
+        取り出す。未指定のキーはNoneのまま返す（#82）。"""
+        width = height = None
+        if attrs_str:
+            for key, val in self.FENCE_ATTR_RE.findall(attrs_str):
+                if key == 'width':
+                    width = val
+                elif key == 'height':
+                    height = val
+        return width, height
+
+    def _render_diagram_fence(self, lang, code, width=None, height=None):
         """```mermaid/```plantuml/```dot/```graphvizフェンスの内容をTypstコードへ変換する。
         通常のMarkdownフロー（render_tokens）とlayout-right/layout-compareブロックの双方から
-        共通で呼べるようにした処理（#77）。mermaid/plantumlはPython側でSVGを事前生成して
-        画像として埋め込むが、dot/graphvizはTypstテンプレート側のshowルール（diagraph）が
-        コンパイル時に遅延描画するため、ここでは素のraw()化（_render_raw_text）に任せればよい。"""
+        共通で呼べるようにした処理（#77）。width/height（#82）が指定された場合、mermaid/plantumlは
+        自動縮小（fit-image）をバイパスして直接そのサイズで埋め込み、dot/graphvizは
+        _render_graphvizが同様にバイパスする。"""
         if lang == 'mermaid':
-            return self._render_mermaid(code)
+            return self._render_mermaid(code, width, height)
         elif lang == 'plantuml':
-            return self._render_plantuml(code)
-        return self._render_raw_text(code, lang)
+            return self._render_plantuml(code, width, height)
+        return self._render_graphviz(lang, code, width, height)
 
     def _render_diagram_or_image_match(self, m):
         """DIAGRAM_OR_IMAGE_REの1マッチをTypstコードへ変換する。フェンスは_render_diagram_fenceへ、
         単独行のMarkdown画像は通常の画像処理（alt|width=/height=構文込み）をそのまま再利用するため
         _render_markdown_segmentに委譲する（#77）。"""
         if m.group('lang'):
-            return self._render_diagram_fence(m.group('lang'), m.group('code'))
+            width, height = self._parse_size_attrs(m.group('attrs'))
+            return self._render_diagram_fence(m.group('lang'), m.group('code'), width, height)
         return self._render_markdown_segment(m.group('image'), False).strip()
 
     def _parse_layout_ratio(self, block_kind, default):
@@ -404,9 +436,12 @@ class TypstRenderer:
         無視してwidth/height: 100%・fit: "cover"で枠いっぱいに敷き詰める（枠の高さ自体は
         FEATURE_IMG_HEIGHTで固定するため、はみ出しはfit:coverのトリミングで吸収される）。
         mermaid/plantuml/dot/graphvizフェンスは想定外の使い方だが、#77の汎用抽出をそのまま通し、
-        既存のfit-image表示（高さ上限あり・cover表示ではない）に委ねる。"""
+        既存のfit-image表示（高さ上限あり・cover表示ではない）に委ねる。フェンス側のwidth/height
+        属性（#82）はcover化の対象外（画像と同じ強制はしない）なので、他のブロックと同様に
+        そのまま反映する。"""
         if match.group('lang'):
-            return self._render_diagram_fence(match.group('lang'), match.group('code')).strip()
+            width, height = self._parse_size_attrs(match.group('attrs'))
+            return self._render_diagram_fence(match.group('lang'), match.group('code'), width, height).strip()
         src_match = re.match(r'!\[[^\]]*\]\(([^)]+)\)', match.group('image'))
         return f'#image("{self._resolve_asset(src_match.group(1))}", width: 100%, height: 100%, fit: "cover")'
 
@@ -618,19 +653,25 @@ class TypstRenderer:
             elif t.type == 'hr':
                 result.append('#pagebreak()\n\n')
             elif t.type == 'fence':
-                lang = t.info.strip()
-                if lang == 'typst-exec':
+                info = t.info.strip()
+                if info == 'typst-exec':
                     if not self.allow_exec:
                         print(f"[Error] Security: 'typst-exec' is allowed only under a 'reviewed/' directory ({self.current_file}).")
                         sys.exit(1)
                     result.append(f"{t.content}\n\n")
-                elif lang in ('mermaid', 'plantuml'):
-                    result.append(self._render_diagram_fence(lang, t.content))
                 else:
-                    # ```` ``` ````フェンス構文で直接組み立てると、コード内容自体に```が
-                    # 含まれる場合にTypst側のフェンスが早期に閉じて壊れる。文字列リテラルとして
-                    # 渡すraw()なら安全（#15の_render_raw_textと同じ理由）。
-                    result.append(self._render_raw_text(t.content, lang or None))
+                    # info stringは'mermaid'や'mermaid {width=50% height=8cm}'のように、言語名の
+                    # 後ろへ空白区切りでサイズ指定属性を書ける（#82）。
+                    parts = info.split(None, 1)
+                    lang = parts[0] if parts else ''
+                    if lang in ('mermaid', 'plantuml', 'dot', 'graphviz'):
+                        width, height = self._parse_size_attrs(parts[1] if len(parts) > 1 else '')
+                        result.append(self._render_diagram_fence(lang, t.content, width, height))
+                    else:
+                        # ```` ``` ````フェンス構文で直接組み立てると、コード内容自体に```が
+                        # 含まれる場合にTypst側のフェンスが早期に閉じて壊れる。文字列リテラルとして
+                        # 渡すraw()なら安全（#15の_render_raw_textと同じ理由）。
+                        result.append(self._render_raw_text(t.content, lang or None))
             elif t.type in ['html_inline', 'html_block']:
                 result.append(self._handle_html_token(t))
             elif t.type == 'th_open':
@@ -775,7 +816,18 @@ class TypstRenderer:
         if self._mermaid_profile_dir and os.path.exists(self._mermaid_profile_dir):
             shutil.rmtree(self._mermaid_profile_dir, ignore_errors=True)
 
-    def _render_mermaid(self, code):
+    def _render_sized_image(self, root_rel_path, width, height):
+        """事前レンダリング済み画像（mermaid/plantumlのSVG）をTypstコードへ変換する。
+        width/height未指定ならfit-image()（はみ出し防止の自動縮小のみ、拡大はしない）、
+        明示指定時は自動縮小をバイパスして#image()へそのままwidth/heightを渡す
+        （通常のMarkdown画像のalt|width=構文と同じ挙動。拡大も含めて指定値どおりになる、#82）。"""
+        if width or height:
+            width_arg = f', width: {width}' if width else ''
+            height_arg = f', height: {height}' if height else ''
+            return f'#align(center)[#image("{root_rel_path}"{width_arg}{height_arg})]\n\n'
+        return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
+
+    def _render_mermaid(self, code, width=None, height=None):
         """mermaidブロックをヘッドレスブラウザ上のmermaid.render()でSVG化し、Typstのimage呼び出しに
         変換する。外部APIへの通信は行わず、ローカルのブラウザで完結させる（仕様書10章・11章、#35）。"""
         if not self.mermaid_enabled:
@@ -811,7 +863,7 @@ class TypstRenderer:
         # base_dir ではなく templates/ になってしまう。ファイルの置き場所に依存しない
         # ルート絶対パス（--root 起点の "/..." 形式）にして、どこから呼んでも解決できるようにする。
         root_rel_path = escape_string_literal("/" + os.path.relpath(svg_path, self.typst_root).replace(os.sep, '/'))
-        return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
+        return self._render_sized_image(root_rel_path, width, height)
 
     def _ensure_plantuml_tools(self):
         """PlantUML実行に必要なjava実行ファイルとplantuml.jarを遅延解決する（初回のみ）。
@@ -835,7 +887,7 @@ class TypstRenderer:
             self._plantuml_jar_path = ensure_plantuml_jar(self.tool_dir)
         return self._plantuml_java_bin, self._plantuml_jar_path
 
-    def _render_plantuml(self, code):
+    def _render_plantuml(self, code, width=None, height=None):
         """```plantumlブロックをローカルのjava+plantuml.jar（Smetanaレイアウトエンジン。dot等の
         外部バイナリに依存しない）でSVG化し、Typstのimage呼び出しに変換する。外部APIへの通信は
         行わない（仕様書10章・11章、#22）。コードは実際のPlantUML構文どおり@startuml/@enduml
@@ -869,7 +921,7 @@ class TypstRenderer:
                 f.write(result.stdout)
 
         root_rel_path = escape_string_literal("/" + os.path.relpath(svg_path, self.typst_root).replace(os.sep, '/'))
-        return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
+        return self._render_sized_image(root_rel_path, width, height)
 
     def escape_typst(self, text, at_line_start=False):
         text = text.replace('\\', '\\\\')
@@ -1561,7 +1613,7 @@ def _build_document_preamble(config, template_root_rel_path, graphviz_enabled, p
     safe_date = escape_string_literal(date_str)
 
     preamble = f"""
-#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, render-header, render-footer, render-background, callout
+#import "{template_root_rel_path.replace(os.sep, '/')}": conf, fit-image, render-graph, render-header, render-footer, render-background, callout
 #show: doc => conf(
   title: "{safe_title}",
   subtitle: "{safe_subtitle}",

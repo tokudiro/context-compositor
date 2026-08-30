@@ -18,6 +18,26 @@
   }
 })
 
+// Graphviz（diagraph、#82でwidth/height明示指定に対応するためconf()の外へ出し、
+// build.py生成コードから直接呼べるようエクスポートした。conf()内のshow raw.where(lang: "dot")
+// ルールは、width/height未指定の呼び出し（自動縮小のみ）としてこの関数をそのまま使う）。
+#import "@preview/diagraph:0.3.7": render
+#let render-graph(code, width: none, height: none) = if width != none or height != none {
+  render(code,
+    width: if width != none { width } else { auto },
+    height: if height != none { height } else { auto })
+} else {
+  layout(size => context {
+    let graph = render(code)
+    let g-size = measure(graph)
+    if g-size.width > size.width {
+      render(code, width: 100%)
+    } else {
+      graph
+    }
+  })
+}
+
 // GitHub形式のalert記法（#61）。template.typと同じ実装（note-me、MIT、@preview/note-me:0.6.0。
 // #63でライセンス確認済み）。全テンプレートが同じ関数名を持つ必要があるため（#61参照）。
 #import "@preview/note-me:0.6.0": note, tip, important, warning, caution
@@ -87,17 +107,7 @@
 
   // Graphviz。graphviz: false のときは既定のraw表示（素のコード表示）にフォールバックする。
   // showルール自体は常時登録する（ブロックスコープで閉じるため、ifの中で宣言すると効かなくなる）。
-  import "@preview/diagraph:0.3.7": render
-  let render-graph(code) = layout(size => context {
-    let graph = render(code)
-    let g-size = measure(graph)
-    if g-size.width > size.width {
-      render(code, width: 100%)
-    } else {
-      graph
-    }
-  })
-
+  // render-graph()自体はモジュールのトップレベルで定義済み（#82でwidth/height対応のため移動）。
   show raw.where(lang: "dot"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
   show raw.where(lang: "graphviz"): it => if graphviz { align(center)[#render-graph(it.text)] } else { it }
 

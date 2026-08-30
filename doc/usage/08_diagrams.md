@@ -21,6 +21,27 @@ Alice -> Bob: Hello
 
 `plugins:` で無効化していない限り自動でレンダリングされます（`graphviz`/`mermaid`/`plantuml`とも既定`true`）。図をテキストと横並びにしたい場合や、2つの図を比較したい場合は独自のレイアウト記法が使えます。
 
+## サイズ指定（width/height）
+
+図は既定でページ幅・高さの上限（Mermaid/PlantUMLは12cm、Graphvizはページ幅）を超えないよう自動縮小されますが、拡大はされません。明示的にサイズを指定したい場合は、言語名の後ろに`{width=...}`/`{height=...}`を書きます。
+
+````markdown
+```mermaid {width=50%}
+graph TD
+  A --> B
+```
+
+```dot {width=8cm height=6cm}
+digraph { A -> B }
+```
+````
+
+- `mermaid`/`plantuml`/`dot`/`graphviz`のいずれのフェンスでも使えます。`width`/`height`は片方だけでも両方でも指定できます。
+- 値はTypstがそのまま解釈できる文字列（`50%`、`8cm`等）です。
+- 明示指定すると自動縮小は働かなくなり、指定した値がそのまま使われます。**拡大も含めて指定どおりに反映される**ため、ページからはみ出さないかは自分で確認してください。
+- 未指定の場合は従来どおり、はみ出さないよう自動で縮小されます（拡大はされません）。
+- `layout-right`/`layout-left`/`layout-compare`内の図でも同じ記法が使えます。`layout-feature`内では、Markdown画像は写真用レイアウトの仕様上サイズ指定を無視して常に枠いっぱいに敷き詰められますが、Mermaid/PlantUML/Graphvizのフェンスは対象外（このレイアウトの想定用途ではない使い方）のため`{width=...}`/`{height=...}`がそのまま反映されます。
+
 ## ローカルにブラウザ／Javaが無い場合
 
 MermaidはChrome/Edge、PlantUMLはJava（11以上）が必要です。システムに見つからない場合の挙動は`plugins.mermaid_auto_download`/`plugins.plantuml_auto_download`で制御します（「plugins: 図表プラグインの有効・無効」の章）。既定はMermaidがエラー終了、PlantUMLが自動取得（約50MB）と非対称です。**Mermaid側を`true`にすると、Playwright自身のChromium（約700MB）をダウンロードする**点に注意してください。GitHub Actionsの`ubuntu-latest`にはどちらも標準搭載されているため、CI上ではいずれも追加取得は発生しません。
