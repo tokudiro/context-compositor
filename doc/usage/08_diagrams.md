@@ -141,3 +141,21 @@ graph TD
 ````
 
 `layout-right`/`layout-compare`と異なり中身の種類は問わず、箇条書き以外（段落など）が混在してもエラーにはなりません。
+
+## align: 段落を中央寄せ・右寄せにする
+
+本文（段落）を中央寄せ・右寄せにしたい場合は`::: align {align=...}`を使います。中身は複数行・複数段落でも構いません。
+
+````markdown
+::: align {align=center}
+中央寄せにしたい段落。
+:::
+
+::: align {align=right}
+右寄せにしたい段落。
+:::
+````
+
+- `{align=center}`/`{align=right}`のいずれかを指定します。`{align=left}`も明示できますが、既定と同じ見た目です。
+- `{align=...}`を省略した場合の見た目は、既定（左寄せ）から変わりません。
+- Markdown画像側の`![alt|align=center](path)`のような属性（画像1枚だけの配置指定、[#75](https://github.com/tokudiro/context-compositor/issues/75)）とは別の記法です。画像1枚だけを中央寄せ・右寄せにしたい場合は画像側の`align`属性を、段落（テキスト）をまとめて寄せたい場合はこの`::: align`ブロックを使います。
