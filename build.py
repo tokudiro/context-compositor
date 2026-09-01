@@ -1014,8 +1014,9 @@ class TypstRenderer:
                 alt_text = t.content or ""
                 width_opt = ""
                 height_opt = ""
-                
-                # alt_textからサイズ指定 (例: alt|width=50%|height=30%) を解析
+                align = None
+
+                # alt_textからサイズ・配置指定 (例: alt|width=50%|height=30%|align=center) を解析
                 if "|" in alt_text:
                     parts = alt_text.split("|")
                     for p in parts[1:]:
@@ -1026,8 +1027,17 @@ class TypstRenderer:
                         elif p.startswith("height="):
                             h = p.split("=", 1)[1]
                             height_opt = f', height: {h}'
-                
-                res.append(f'#image("{self._resolve_asset(src)}"{width_opt}{height_opt})')
+                        elif p.startswith("align="):
+                            align = p.split("=", 1)[1].strip()
+
+                image_expr = f'#image("{self._resolve_asset(src)}"{width_opt}{height_opt})'
+                # align未指定時は従来通り（暗黙の左寄せ）のまま変更しない（#75）。他の独自属性
+                # （layout-rightのleft=/right=比率等）と同様、align=の値自体の妥当性チェックは
+                # 行わない（不正値はTypst側の#align()呼び出しでコンパイルエラーになる）。
+                if align:
+                    res.append(f'#align({align})[{image_expr}]')
+                else:
+                    res.append(image_expr)
             elif t.type == 'link_open':
                 href = dict(t.attrs).get('href', '')
                 res.append(f'#link("{escape_string_literal(href)}")[')
