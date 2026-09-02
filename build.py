@@ -134,12 +134,14 @@ class TypstRenderer:
         r'^::: *(layout-right|layout-left|layout-compare|layout-feature|layout-columns|align)'
         r'(?: +\{([^}\r\n]*)\})? *\r?\n(.*?)\r?\n::: *\r?$',
         re.MULTILINE | re.DOTALL)
-    # フェンス（mermaid/plantuml/dot/graphviz）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
+    # フェンス（mermaid/plantuml/dot/graphviz/svg）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
     # いずれかにマッチする。画像側は行全体にアンカーし、文中に埋め込まれたインライン画像を誤って
     # 抜き出さないようにする（テキストの前後を単純に連結する都合上、行の一部だけを抜くと文が壊れる）。
     # 言語名の後ろに`{width=50%}`のようなPandoc風のサイズ指定属性を書ける（#82）。
+    # svgはmermaid/plantumlと異なりレンダリング不要（コードそのものが既に完成した画像）だが、
+    # 「図/画像を1つ含む」という抽出対象としては同列に扱える（#91）。
     DIAGRAM_OR_IMAGE_RE = re.compile(
-        r'```(?P<lang>mermaid|plantuml|dot|graphviz)(?P<attrs>[ \t]+\{[^}\r\n]*\})?[ \t]*\r?\n(?P<code>.*?)\r?\n```'
+        r'```(?P<lang>mermaid|plantuml|dot|graphviz|svg)(?P<attrs>[ \t]+\{[^}\r\n]*\})?[ \t]*\r?\n(?P<code>.*?)\r?\n```'
         r'|^[ \t]*(?P<image>!\[[^\]]*\]\([^)\n]+\))[ \t]*\r?$',
         re.MULTILINE | re.DOTALL)
     # フェンスのinfo string（'mermaid'や'{width=50% height=8cm}'の中身）からwidth=/height=を
@@ -346,15 +348,17 @@ class TypstRenderer:
         return width, height
 
     def _render_diagram_fence(self, lang, code, width=None, height=None):
-        """```mermaid/```plantuml/```dot/```graphvizフェンスの内容をTypstコードへ変換する。
+        """```mermaid/```plantuml/```dot/```graphviz/```svgフェンスの内容をTypstコードへ変換する。
         通常のMarkdownフロー（render_tokens）とlayout-right/layout-compareブロックの双方から
-        共通で呼べるようにした処理（#77）。width/height（#82）が指定された場合、mermaid/plantumlは
+        共通で呼べるようにした処理（#77）。width/height（#82）が指定された場合、mermaid/plantuml/svgは
         自動縮小（fit-image）をバイパスして直接そのサイズで埋め込み、dot/graphvizは
         _render_graphvizが同様にバイパスする。"""
         if lang == 'mermaid':
             return self._render_mermaid(code, width, height)
         elif lang == 'plantuml':
             return self._render_plantuml(code, width, height)
+        elif lang == 'svg':
+            return self._render_svg(code, width, height)
         return self._render_graphviz(lang, code, width, height)
 
     def _render_diagram_or_image_match(self, m):
@@ -384,13 +388,13 @@ class TypstRenderer:
 
     def _render_layout_block(self, inner_text, flip=False, ratio=(35, 65)):
         """::: layout-right / layout-left ... ::: ブロックを、テキストと図（mermaid/plantuml/dot/
-        graphvizまたはMarkdown画像）の2カラムgridへ変換する。flip=Trueならlayout-leftとして
+        graphviz/svgまたはMarkdown画像）の2カラムgridへ変換する。flip=Trueならlayout-leftとして
         図を左・テキストを右に配置する（#81）。ratioは(左, 右)のfr比率"""
         block_name = 'layout-left' if flip else 'layout-right'
         match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
         if not match:
             print(f"[Error] '{block_name}' block in {self.current_file} must contain exactly one "
-                  "```mermaid/```plantuml/```dot/```graphviz fence or a standalone image.")
+                  "```mermaid/```plantuml/```dot/```graphviz/```svg fence or a standalone image.")
             sys.exit(1)
         surrounding_md = (inner_text[:match.start()] + inner_text[match.end():]).strip()
         text_typst = self._render_markdown_segment(surrounding_md, False).strip()
@@ -409,13 +413,13 @@ class TypstRenderer:
         )
 
     def _render_compare_block(self, inner_text):
-        """::: layout-compare ... ::: ブロックを、2つの図（mermaid/plantuml/dot/graphvizまたは
+        """::: layout-compare ... ::: ブロックを、2つの図（mermaid/plantuml/dot/graphviz/svgまたは
         Markdown画像。種類は混在可）を左右に並べた2カラムgridへ変換する。
         各図の直前にあるテキスト（キャプション）は、その図と同じ列にまとめて配置する。"""
         matches = list(self.DIAGRAM_OR_IMAGE_RE.finditer(inner_text))
         if len(matches) != 2:
             print(f"[Error] 'layout-compare' block in {self.current_file} must contain exactly two "
-                  f"```mermaid/```plantuml/```dot/```graphviz fences or images (found {len(matches)}).")
+                  f"```mermaid/```plantuml/```dot/```graphviz/```svg fences or images (found {len(matches)}).")
             sys.exit(1)
         cells = []
         prev_end = 0
@@ -450,7 +454,7 @@ class TypstRenderer:
         「写真が主役」という趣旨に合わせ、Markdown画像はalt側のwidth/height指定（あれば）を
         無視してwidth/height: 100%・fit: "cover"で枠いっぱいに敷き詰める（枠の高さ自体は
         FEATURE_IMG_HEIGHTで固定するため、はみ出しはfit:coverのトリミングで吸収される）。
-        mermaid/plantuml/dot/graphvizフェンスは想定外の使い方だが、#77の汎用抽出をそのまま通し、
+        mermaid/plantuml/dot/graphviz/svgフェンスは想定外の使い方だが、#77の汎用抽出をそのまま通し、
         既存のfit-image表示（高さ上限あり・cover表示ではない）に委ねる。フェンス側のwidth/height
         属性（#82）はcover化の対象外（画像と同じ強制はしない）なので、他のブロックと同様に
         そのまま反映する。"""
@@ -467,7 +471,7 @@ class TypstRenderer:
         match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
         if not match:
             print(f"[Error] 'layout-feature' block in {self.current_file} must contain exactly one "
-                  "```mermaid/```plantuml/```dot/```graphviz fence or a standalone image.")
+                  "```mermaid/```plantuml/```dot/```graphviz/```svg fence or a standalone image.")
             sys.exit(1)
         catchcopy_md = (inner_text[:match.start()] + inner_text[match.end():]).strip()
         catchcopy_typst = self._render_markdown_segment(catchcopy_md, False).strip()
@@ -693,7 +697,7 @@ class TypstRenderer:
                     # 後ろへ空白区切りでサイズ指定属性を書ける（#82）。
                     parts = info.split(None, 1)
                     lang = parts[0] if parts else ''
-                    if lang in ('mermaid', 'plantuml', 'dot', 'graphviz'):
+                    if lang in ('mermaid', 'plantuml', 'dot', 'graphviz', 'svg'):
                         width, height = self._parse_size_attrs(parts[1] if len(parts) > 1 else '')
                         result.append(self._render_diagram_fence(lang, t.content, width, height))
                     else:
@@ -855,6 +859,22 @@ class TypstRenderer:
             height_arg = f', height: {height}' if height else ''
             return f'#align(center)[#image("{root_rel_path}"{width_arg}{height_arg})]\n\n'
         return f'#align(center)[#fit-image("{root_rel_path}")]\n\n'
+
+    def _render_svg(self, code, width=None, height=None):
+        """```svgフェンスの内容をTypstのimage呼び出しに変換する。mermaid/plantumlと異なりSVGは
+        既にテキストで完結したベクター画像フォーマットのため、外部レンダリングエンジンは呼ばず、
+        コードをそのままキャッシュ用の.svgファイルへ書き出すだけでよい（#91）。"""
+        cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
+        svg_path = os.path.join(cache_dir, f"svg_{digest}.svg")
+
+        if not os.path.exists(svg_path):
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(code)
+
+        root_rel_path = escape_string_literal("/" + os.path.relpath(svg_path, self.typst_root).replace(os.sep, '/'))
+        return self._render_sized_image(root_rel_path, width, height)
 
     def _render_mermaid(self, code, width=None, height=None):
         """mermaidブロックをヘッドレスブラウザ上のmermaid.render()でSVG化し、Typstのimage呼び出しに

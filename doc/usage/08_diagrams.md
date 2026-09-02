@@ -1,4 +1,4 @@
-# 図表（Mermaid / Graphviz / PlantUML）
+# 図表（Mermaid / Graphviz / PlantUML / SVG）
 
 通常のフェンスコードブロックとして書きます。
 
@@ -17,9 +17,17 @@ digraph { A -> B }
 Alice -> Bob: Hello
 @enduml
 ```
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+  <rect x="10" y="10" width="180" height="80" fill="lightblue"/>
+</svg>
+```
 ````
 
 `plugins:` で無効化していない限り自動でレンダリングされます（`graphviz`/`mermaid`/`plantuml`とも既定`true`）。図をテキストと横並びにしたい場合や、2つの図を比較したい場合は独自のレイアウト記法が使えます。
+
+`svg`フェンスはMermaid/PlantUML/Graphvizと異なりレンダリングを一切行いません。SVGは既にテキストで完結したベクター画像フォーマットのため、コードの内容をそのまま画像として埋め込みます。外部ツールへの依存が無いため`plugins:`の無効化対象にもなりません（常時有効）。静止画としてのSVGファイルを貼るだけなら通常のMarkdown画像記法（`![alt](path.svg)`）でも同様に埋め込めますが、`svg`フェンスは別ファイルを用意せず原稿に直接コードを書きたい場合に使います。
 
 ## サイズ指定（width/height）
 
@@ -36,7 +44,7 @@ digraph { A -> B }
 ```
 ````
 
-- `mermaid`/`plantuml`/`dot`/`graphviz`のいずれのフェンスでも使えます。`width`/`height`は片方だけでも両方でも指定できます。
+- `mermaid`/`plantuml`/`dot`/`graphviz`/`svg`のいずれのフェンスでも使えます。`width`/`height`は片方だけでも両方でも指定できます。
 - 値はTypstがそのまま解釈できる文字列（`50%`、`8cm`等）です。
 - 明示指定すると自動縮小は働かなくなり、指定した値がそのまま使われます。**拡大も含めて指定どおりに反映される**ため、ページからはみ出さないかは自分で確認してください。
 - 未指定の場合は従来どおり、はみ出さないよう自動で縮小されます（拡大はされません）。
@@ -63,7 +71,7 @@ graph TD
 :::
 ````
 
-`::: layout-right`/`::: layout-compare`の中に置ける図は、Mermaidに限らずPlantUML・Graphviz（`dot`/`graphviz`フェンス）・Markdown画像（`![alt](path)`、単独行のみ）のいずれも使えます。`::: layout-compare ... :::` は2つの図を左右に並べます（横長の図には不向き）。2つの種類を混在させる（例: 片方はMermaid図、もう片方は写真）こともできます。
+`::: layout-right`/`::: layout-compare`の中に置ける図は、Mermaidに限らずPlantUML・Graphviz（`dot`/`graphviz`フェンス）・SVG（`svg`フェンス）・Markdown画像（`![alt](path)`、単独行のみ）のいずれも使えます。`::: layout-compare ... :::` は2つの図を左右に並べます（横長の図には不向き）。2つの種類を混在させる（例: 片方はMermaid図、もう片方は写真）こともできます。
 
 図を左・テキストを右に置きたい場合は`layout-right`の左右反転版`layout-left`が使えます。中に置ける図の種類・書式は`layout-right`と同じです。
 
@@ -114,7 +122,7 @@ graph TD
 :::
 ````
 
-中に置ける図/画像は`layout-right`/`layout-compare`と同じくMermaid・PlantUML・Graphviz・Markdown画像のいずれも使えますが、想定用途はほぼ写真です。写真はMarkdown側の`alt|width=`指定に関わらず枠いっぱいに敷き詰められ（トリミングあり）、縦長・横長どちらの写真でも枠からはみ出しません。
+中に置ける図/画像は`layout-right`/`layout-compare`と同じくMermaid・PlantUML・Graphviz・SVG・Markdown画像のいずれも使えますが、想定用途はほぼ写真です。写真はMarkdown側の`alt|width=`指定に関わらず枠いっぱいに敷き詰められ（トリミングあり）、縦長・横長どちらの写真でも枠からはみ出しません。
 
 想定している用途はスライド自体と同じ横長〜正方形に近い写真です。縦長写真を置くと上下がトリミングされます（枠の高さに収まるよう左右基準で拡大されるため）。縦長写真の全体を見せたい場合はこのレイアウトの対象外とし、通常のMarkdown画像として配置してください。
 
