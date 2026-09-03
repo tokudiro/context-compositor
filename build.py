@@ -165,6 +165,10 @@ class TypstRenderer:
     HTML_SPAN_COLOR_OPEN_RE = re.compile(r'^<span\s+style\s*=\s*["\']color\s*:\s*([^;"\']+?)\s*;?\s*["\']\s*>$', re.IGNORECASE)
     HTML_SPAN_CLOSE_RE = re.compile(r'^</span\s*>$', re.IGNORECASE)
 
+    # フォントサイズ指定（#93）。[text]{size=10pt}のsize属性、front-matterのfont_sizeの両方で使う
+    # 共通フォーマット。Typstの#text(size: ...)にそのまま渡せる"10pt"/"10.5pt"のような値のみ許可する。
+    FONT_SIZE_RE = re.compile(r'^\d+(\.\d+)?pt$')
+
     # GitHub形式のalert記法（#61）。`> [!NOTE]`のように、blockquoteの最初の行がこのマーカーだけの
     # ときだけ発動する。テンプレート側は@preview/note-me（MIT、#63でライセンス確認済み）が持つ
     # note/tip/important/warning/cautionをcallout()でラップして呼び出す。
@@ -176,7 +180,7 @@ class TypstRenderer:
         # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
         self.md = (MarkdownIt("commonmark").enable("table").enable("strikethrough")
                    .use(tasklists_plugin)
-                   .use(attrs_plugin, spans=True, span_after="link", allowed=["color"]))
+                   .use(attrs_plugin, spans=True, span_after="link", allowed=["color", "size"]))
         self.list_stack = []
         self.current_file = ""
         self.current_dir = ""
@@ -610,7 +614,7 @@ class TypstRenderer:
                                                               'paper_size', 'landscape', 'font_size',
                                                               'header', 'footer', 'paginate'):
                 print(f"[Warning] Unknown front-matter key '{key}' in {self.current_file}")
-        if 'font_size' in meta and not re.match(r'^\d+(\.\d+)?pt$', str(meta['font_size'])):
+        if 'font_size' in meta and not self.FONT_SIZE_RE.match(str(meta['font_size'])):
             print(f"[Warning] front-matter 'font_size' in {self.current_file} should look like '16pt'; got {meta['font_size']!r}. Ignoring.")
             del meta['font_size']
         # 除去した行数ぶん改行を残し、以降の警告メッセージの行番号がずれないようにする
@@ -1084,11 +1088,24 @@ class TypstRenderer:
             elif t.type == 'link_close':
                 res.append(']')
             elif t.type == 'span_open':
-                # [text]{color=red}（#46）。attrs_pluginにallowed=["color"]を指定しているため、
-                # color以外の属性は既にパース段階で取り除かれている。colorが無ければ何もラップしない。
-                color = dict(t.attrs).get('color')
+                # [text]{color=red}（#46）、[text]{size=10pt}（#93）。attrs_pluginに
+                # allowed=["color", "size"]を指定しているため、それ以外の属性は既にパース段階で
+                # 取り除かれている。color/sizeのどちらも無ければ何もラップしない。両方指定された
+                # 場合は#text()呼び出し1つにfill/sizeをまとめる（2重にラップしない）。
+                attrs = dict(t.attrs)
+                color = attrs.get('color')
+                size = attrs.get('size')
+                if size is not None and not self.FONT_SIZE_RE.match(str(size)):
+                    line_no = t.map[0] + 1 if t.map else '?'
+                    print(f"[Warning] Ignoring invalid size {size!r} in {self.current_file}:{line_no}; expected e.g. '10pt'.")
+                    size = None
+                text_args = []
                 if color:
-                    res.append(f'#text(fill: {self._color_to_typst(color)})[')
+                    text_args.append(f'fill: {self._color_to_typst(color)}')
+                if size:
+                    text_args.append(f'size: {size}')
+                if text_args:
+                    res.append(f'#text({", ".join(text_args)})[')
                     span_wrap_stack.append(True)
                 else:
                     span_wrap_stack.append(False)

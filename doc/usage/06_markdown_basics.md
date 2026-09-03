@@ -31,6 +31,7 @@ CommonMark準拠に加え、GFM (GitHub Flavored Markdown) の一部とGitHub Wi
 | GitHub Wikiの用語索引記法（`[[用語]]`） | 対応（`document.glossary: true`のときのみ。下記） |
 | alert（`> [!NOTE]`等） | 対応（下記） |
 | 文字色指定 | 対応（GFM/GitHub Wikiのどちらにも属さない例外。下記） |
+| フォントサイズ指定 | 対応（文字色指定と同じブラケット+属性記法。下記） |
 | 生HTML | 非対応（`<span style="color:...">`を除く狭い例外のみ。「Markdownの書き方」以降の各章を参照） |
 
 対応するスコープの詳しい経緯は[doc/spec.md](../spec.md)を参照してください。
@@ -48,8 +49,22 @@ CommonMark準拠に加え、GFM (GitHub Flavored Markdown) の一部とGitHub Wi
 - `[text]{color=...}`はPandoc由来のブラケット+属性記法です。GitHubの生表示では特別扱いされず、`{color=red}`がそのまま文字として見えます。
 - `<span style="color:...">`はGitHub上でもそのまま正しく色付き表示されます。ただし対応するのはこの1パターンのみで、他のHTMLタグ・他のCSSプロパティは今までどおり非対応（警告）です。
 - 色の指定は、Typstが認識する色名（`red`、`blue`等の英単語）か `"#rrggbb"` 形式のいずれかです。
-- `color`以外の属性（`[text]{class=foo}`等）は無視され、見た目には反映されません。
+- `color`/`size`以外の属性（`[text]{class=foo}`等）は無視され、見た目には反映されません。
 - `<span>`を閉じ忘れた場合はビルドを止めず、自動的に閉じたうえで警告を出します。
+
+## フォントサイズ指定
+
+本文の一部だけフォントサイズを変えたい場合（脚注・出典など）は、文字色指定と同じブラケット+属性記法で`size`を指定します。
+
+```markdown
+本文中の一部だけ [小さい文字]{size=10pt} にできます。
+
+色とサイズは同時に指定できます: [小さいグレーの文字]{color="#8a8f98" size=10pt}
+```
+
+- サイズは`10pt`のように数値+`pt`単位で指定します（front-matterの`font_size`と同じ形式）。不正な値（単位なし・`pt`以外の単位等）は無視され、警告を出したうえでサイズ指定なしとして扱います。
+- `color`と`size`は同時に指定できます（`[text]{color=... size=...}`）。
+- ページ単位でフォントサイズを変えたい場合は、この記法ではなく`document.font_size`/`chapters[].font_size`（front-matterの`font_size`）を使ってください。
 
 ## alert: 注意書きの囲み
 
