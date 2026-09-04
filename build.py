@@ -111,9 +111,9 @@ class TypstRenderer:
     # （chapters[]の明示指定が無い場合のみ使われる）ため、ここには含めない。
     MARP_ONLY_KEYS = {'marp', 'theme', 'size', 'class', 'style', 'backgroundColor'}
 
-    # ::: layout-right / layout-left / layout-compare / layout-feature / layout-columns / align
-    # ... ::: ブロック。ブロック名の後ろに`{key=value ...}`というPandoc風の中括弧属性を書ける
-    # （#83）。
+    # ::: layout-right / layout-left / layout-compare / layout-feature / layout-columns /
+    # layout-takahashi / align ... ::: ブロック。ブロック名の後ろに`{key=value ...}`という
+    # Pandoc風の中括弧属性を書ける（#83）。
     # - layout-right: 中の図（mermaid/plantuml/dot/graphvizフェンス、または単独行のMarkdown画像）
     #   を右、それ以外のテキストを左に配置する。`{left=30 right=70}`のように左:右の比率
     #   （Typstのfr単位。合計100である必要はない）を指定できる。省略時は35:65（#81）。
@@ -124,6 +124,9 @@ class TypstRenderer:
     # - layout-feature: 写真（または図）をフルブリードで敷き、下部にキャッチコピーを重ねる（#78）。
     # - layout-columns: 中身（任意のMarkdown）を`{n=N}`で指定した列数（省略時2列）のcolumns()に
     #   流し込む（#78）。
+    # - layout-takahashi: 中身（任意のMarkdown）を画面の上下左右中央・大きな文字で表示する
+    #   （高橋メソッド、#95）。`{size=...}`で既定の文字サイズ（TAKAHASHI_DEFAULT_SIZE）を
+    #   上書きできる。
     # - align: 中身（任意のMarkdown、複数段落可）を`{align=center}`/`{align=right}`で指定した
     #   寄せでラップする。画像のalign属性（#75）と同じく、指定しない場合の既定の見た目（左寄せ）
     #   は変わらない（#87）。
@@ -131,7 +134,8 @@ class TypstRenderer:
     # 難しいため、通常のトークン処理に入る前の生テキスト段階で切り出して個別に処理する（#11）。
     # 対応する図の種類をmermaidだけに限らず一般化したもの（#77）。
     LAYOUT_BLOCK_RE = re.compile(
-        r'^::: *(layout-right|layout-left|layout-compare|layout-feature|layout-columns|align)'
+        r'^::: *(layout-right|layout-left|layout-compare|layout-feature|layout-columns|'
+        r'layout-takahashi|align)'
         r'(?: +\{([^}\r\n]*)\})? *\r?\n(.*?)\r?\n::: *\r?$',
         re.MULTILINE | re.DOTALL)
     # フェンス（mermaid/plantuml/dot/graphviz/svg）か、単独行のMarkdown画像（`![alt](src)`のみの行）の
@@ -322,6 +326,8 @@ class TypstRenderer:
                 output.append(self._render_compare_block(block_body))
             elif block_kind == 'layout-feature':
                 output.append(self._render_feature_block(block_body))
+            elif block_kind == 'layout-takahashi':
+                output.append(self._render_takahashi_block(attrs_str, block_body))
             elif block_kind == 'align':
                 output.append(self._render_align_block(attrs_str, block_body))
             else:
@@ -513,6 +519,22 @@ class TypstRenderer:
             "  ]\n"
             "})\n\n"
         )
+
+    # layout-takahashiの既定の文字サイズ（#95）。本文既定の10.5pt（templates/template.typ）に
+    # 対し、高橋メソッド的な「大きな文字を1つだけ見せる」用途として十分大きい値を採用した。
+    # 内容の長さに合わない場合は`{size=...}`属性で上書きできる。
+    TAKAHASHI_DEFAULT_SIZE = "96pt"
+
+    def _render_takahashi_block(self, attrs_str, inner_text):
+        """::: layout-takahashi ... ::: ブロックを、中身（任意のMarkdown）を画面の上下左右中央に
+        大きな文字で表示するレイアウトへ変換する（高橋メソッド、#95）。`{size=...}`で
+        TAKAHASHI_DEFAULT_SIZEを上書きできる。layout-right の left=/right= 等と同じく、
+        size の値自体の妥当性チェックは行わない（不正値はTypst側の#text()呼び出しが
+        コンパイルエラーになる）。"""
+        attrs = dict(self.FENCE_ATTR_RE.findall(attrs_str)) if attrs_str else {}
+        size = attrs.get('size', self.TAKAHASHI_DEFAULT_SIZE)
+        content_typst = self._render_markdown_segment(inner_text, False).strip()
+        return f'#align(center + horizon)[#text(size: {size})[{content_typst}]]\n\n'
 
     def _render_align_block(self, attrs_str, inner_text):
         """::: align {align=center} / ::: align {align=right} ... ::: ブロックを、中身
