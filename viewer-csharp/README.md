@@ -59,6 +59,29 @@ VIEWER_PYTHON_EXTRA_PATH="$(/path/to/venv/bin/python3 -c 'import site; print(sit
   可能性がある）か、Windows + Microsoft Store版Pythonでも再現するかは別途確認が必要。
   自動化スクリプトから呼び出す場合は、当面 `timeout` 等でタイムアウト付き実行にする必要がある。
 
+## 検証結果（Windows実機・Microsoft Store版Python）
+
+開発機（Windows 11、Microsoft Store版Python 3.10）で実際に`dotnet run`した結果、次の2段階の失敗を確認した。
+
+1. `VIEWER_PYTHON_DLL`/`VIEWER_PYTHON_HOME`を未指定のまま実行すると、pythonnetのデフォルト探索が
+   正しい`python310.dll`を特定できず、`Python.Runtime.BadPythonDllException`
+   （内部的には`Py_IncRef`のシンボル解決に失敗、Win32エラー127＝プロシージャが見つからない）で
+   起動できなかった。
+2. READMEの手順通り`VIEWER_PYTHON_DLL`/`VIEWER_PYTHON_HOME`にMicrosoft Store版Pythonの実体パス
+   （`sys.executable`から辿った`C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_...`
+   配下の`python310.dll`）を明示しても、`System.ComponentModel.Win32Exception (5):
+   アクセスが拒否されました`で`LoadLibrary`自体が失敗した。
+   - `icacls`で確認した限り、対象DLLのNTFS ACL上は`BUILTIN\Users`にRead/Execute相当の権限が
+     付与されている。それでもロードに失敗したことから、NTFSのアクセス権とは別に、
+     `WindowsApps`配下のパッケージに対するWindowsの実行時保護（Store版アプリ以外の外部プロセス
+     からのアクセス制限）が働いていると考えられる（原因はACLエントリの状況からの推測であり、
+     本スパイクの範囲では未確定）。
+
+**結論**: 開発機のMicrosoft Store版Pythonでは、C#(pythonnet)からの埋め込み呼び出しはそのままでは
+動作しない。回避するにはpython.org配布版やpyenv-win等、Store経由ではない通常インストールの
+Pythonが別途必要と考えられるが、本スパイクでは未検証。これはIssue #99の完了条件
+「動作しない場合はどのような制約があるか」に対応する検証結果。
+
 ## Rust版（viewer-rust）との比較メモ
 
 同じ検証環境（Linux）で、Rust + PyO3版（`../viewer-rust/`）は `render()` 呼び出し・表示に加えて
@@ -69,5 +92,10 @@ VIEWER_PYTHON_EXTRA_PATH="$(/path/to/venv/bin/python3 -c 'import site; print(sit
 
 ## 次のステップ（本issueの範囲外）
 
-Issue #99本文の「次のステップ」に加えて、上記の終了時ハングの原因切り分け（Windows +
-Microsoft Store版Pythonでの再現確認を含む）。
+Issue #99本文の「次のステップ」に加えて、次の2点。
+
+- 上記の終了時ハングの原因切り分け（Linux固有か、Windows + Microsoft Store版Pythonでの
+  再現有無を含む）。Windows実機ではアクセス拒否でPython初期化自体に到達できておらず、
+  終了時ハングの再現確認はまだできていない。
+- 非Store版Python（python.org配布版やpyenv-win等）をWindows実機にインストールした上での
+  再検証。Microsoft Store版Pythonでのアクセス拒否を回避できるかを確認する。
