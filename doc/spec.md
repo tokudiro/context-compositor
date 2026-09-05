@@ -179,6 +179,11 @@ python build.py --config <path/to/context-compositor.config.yaml>
 * 中間 Typst ファイルは `project_dir` 直下の `.context-compositor/temp_build.typ` に生成する（Mermaidのキャッシュも同じ `.context-compositor/cache/` 配下）。テンプレートは同じ `.context-compositor/_template.typ` へコピーしてから参照する（5章・8章のサンドボックス要件）。画像はコピーせず、`--root` 起点のルート絶対パス（`/...`）で参照して解決する。
 * ビルド成功後、`temp_build.typ` と `_template.typ` は使い捨ての中間ファイルとして削除する。`cache/`（Mermaid等の描画結果）は次回以降のビルドで再利用するため削除しない。ビルド失敗時はデバッグに使えるよう `temp_build.typ` 等を残したまま終了する（[#20](https://github.com/tokudiro/context-compositor/issues/20)）。`.gitignore` への追加を推奨する。
 * 出力 PDF が既に開かれている等で書き込めない場合は、部分的な破損ファイルを残さず明確なエラーで終了する。
+* **行番号マッピング**（[#27](https://github.com/tokudiro/context-compositor/issues/27)）: `document.diagnostics.line_mapping: "block"`（既定）のとき、Typstのコンパイルエラーが「Markdownの何行目に起因するか」をエラーメッセージに付記する。**（実装済み）**
+  * **実装**: `TypstRenderer.render_tokens`がトップレベルのブロック（見出し・段落・引用・リスト全体・テーブル全体・hr・fence。リストの中は対象外）を出力する直前に、`// @srcmap {mdファイル}:{md行番号}`という行コメントを生成コードへ挿し込む（`_emit_srcmap`）。front-matter除去処理が既に「行数がずれないよう空行を残す」設計（7章）になっているため、`markdown-it-py`のトークンが持つ`t.map[0]`はそのまま元ファイルの行番号として使える。
+  * 全チャプター結合後、`_compile_and_cleanup`が`temp_build.typ`書き出し前にこの目印行を1回スキャンし、`[(typstコード上の行番号, mdファイル, md行番号), ...]`という対応表（`_build_srcmap`）を作る。`typst_lib.TypstError`を捕捉した際、位置情報を含む`e.diagnostic`（`codespan_reporting`が整形する`┌─ temp_build.typ:12:5`形式の文字列。`str(e)`が返す`e.message`には位置情報が無く、実機確認で判明した）から`temp_build.typ:行:列`を対応表で逆引きし、`[Hint] temp_build.typ:N corresponds to around {mdファイル}:{md行}`という行を追記する（`_annotate_typst_error`）。
+  * `"off"`を指定すると目印行を挿し込まず、従来どおりTypst側の生の行番号のみになる。リスト項目・テーブル行単位まで踏み込む`"fine"`は将来課題（Typstのリスト継続判定はリスト項目の物理的な列位置で決まり行コメントはトリビアとして無視される、という設計調査は済んでいるが、実機検証はまだのため）。
+  * **テスト**: `tests/test_line_mapping.py`（pytest。`pip install -r requirements-dev.txt`後に`pytest tests/`で実行）に、`_resolve_line_mapping`/`_build_srcmap`/`_resolve_srcmap`/`_annotate_typst_error`の単体テストと、`TypstRenderer.render()`が実際にマーカーを挿し込む統合テストを用意している。CIには未接続（ローカル実行のみ）。
 
 ## 13. FAQ（よくある疑問）
 

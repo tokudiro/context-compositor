@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import json
+import bisect
 import subprocess
 import hashlib
 import shutil
@@ -216,7 +217,8 @@ class TypstRenderer:
     ALERT_MARKER_RE = re.compile(r'^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$')
 
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
-                 plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False, tool_dir=None):
+                 plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False, tool_dir=None,
+                 line_mapping="block"):
         # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
         # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
         self.md = (MarkdownIt("commonmark").enable("table").enable("strikethrough")
@@ -274,6 +276,12 @@ class TypstRenderer:
         # （mermaidのヘッドレスブラウザと異なり常駐プロセスではないため、都度subprocessで起動する）。
         self._plantuml_java_bin = None
         self._plantuml_jar_path = None
+        # document.diagnostics.line_mapping: "block"（既定、#27）。Typstコンパイルエラーの行番号を
+        # 元のMarkdownの行番号へ逆引きするための行コメント（`// @srcmap ...`）を生成コードに
+        # 挿し込むかどうかの精度。"off"なら挿し込まず、従来どおりTypst側の生の行番号のみになる。
+        # リスト項目・テーブル行単位まで踏み込む"fine"は将来課題（Typstのリスト継続判定への
+        # 影響を実機検証してから対応する）。
+        self.line_mapping = line_mapping
 
     # 拡張子ごとの構造化データ言語（Typstのraw()に渡すシンタックスハイライト名）。
     # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
@@ -704,17 +712,19 @@ class TypstRenderer:
         while i < len(tokens):
             t = tokens[i]
             if t.type == 'heading_open':
+                self._emit_srcmap(result, t)
                 level = int(t.tag[1:])
                 result.append('=' * level + ' ')
             elif t.type == 'heading_close':
                 result.append('\n\n')
             elif t.type == 'paragraph_open':
-                pass
+                self._emit_srcmap(result, t)
             elif t.type == 'paragraph_close':
                 # 【修正】タイトなリスト内の暗黙段落(hidden)で空行を出さない（loose化防止）
                 if not t.hidden:
                     result.append('\n\n')
             elif t.type == 'blockquote_open':
+                self._emit_srcmap(result, t)
                 alert_kind = self._detect_alert_kind(tokens, i)
                 if alert_kind:
                     result.append(f'#callout(kind: "{alert_kind}")[\n')
@@ -726,6 +736,7 @@ class TypstRenderer:
                 result.append(self.render_inline(t.children))
             # 【修正】ネストしたリストを階層のままインデント付きで出力する
             elif t.type in ['bullet_list_open', 'ordered_list_open']:
+                self._emit_srcmap(result, t)
                 if self.list_stack and not self._ends_with_newline(result):
                     result.append('\n')
                 self.list_stack.append('ordered' if t.type == 'ordered_list_open' else 'bullet')
@@ -742,13 +753,16 @@ class TypstRenderer:
                 if not self._ends_with_newline(result):
                     result.append('\n')
             elif t.type == 'table_open':
+                self._emit_srcmap(result, t)
                 cols = self._count_table_cols(tokens, i)
                 result.append(f'#table(\n  columns: {cols}{self._table_header_fill_arg()},\n  ')
             elif t.type == 'table_close':
                 result.append('\n)\n\n')
             elif t.type == 'hr':
+                self._emit_srcmap(result, t)
                 result.append('#pagebreak()\n\n')
             elif t.type == 'fence':
+                self._emit_srcmap(result, t)
                 info = t.info.strip()
                 if info == 'typst-exec':
                     if not self.allow_exec:
@@ -814,6 +828,24 @@ class TypstRenderer:
             if s:
                 return s.endswith('\n')
         return True
+
+    # Typstコンパイルエラーの行番号を元のMarkdownの行番号へ逆引きするための目印（#27）。
+    # _resolve_project_dirs後の_compile_and_cleanupがtemp_build.typ全体からこの行を
+    # 一度スキャンし、「Typstの行番号→(Markdownファイル, 行番号)」の対応表を作る。
+    SRCMAP_PREFIX = '// @srcmap '
+
+    def _emit_srcmap(self, result, t):
+        """document.diagnostics.line_mapping: "block"（既定）のとき、トップレベルのブロック
+        （見出し・段落・引用・リスト全体・テーブル全体・hr・fence）の開始点で、生成Typst
+        コードへ行コメントの目印を挿し込む。リストの中（self.list_stackが非空）は対象外
+        （リスト項目・テーブル行単位まで踏み込む"fine"は、Typstのリスト継続判定への影響を
+        実機検証してから対応する将来課題）。"off"時は何もしない（従来どおりTypst側の生の
+        行番号のみになる）。"""
+        if self.line_mapping != "block" or t.map is None or self.list_stack:
+            return
+        if result and not self._ends_with_newline(result):
+            result.append('\n')
+        result.append(f'{self.SRCMAP_PREFIX}{self.current_file}:{t.map[0] + 1}\n')
 
     def _resolve_asset(self, src):
         """画像の相対パスをMarkdownファイル基準から、typst_root起点のルート絶対パスへ変換する。
@@ -1262,7 +1294,10 @@ def default_config():
             "title": "System_Specification",
             "subtitle": "自動生成ドキュメント",
             "author": "開発チーム",
-            "date": "auto"
+            "date": "auto",
+            "diagnostics": {
+                "line_mapping": "block"
+            }
         },
         "output": {
             "filename": "System_Specification.pdf",
@@ -1925,11 +1960,66 @@ def _render_markdown_chapter(ch_dict, ch_file, inputs_dir, renderer, current_lan
 
     return typst_code, current_landscape, current_paper, current_header, current_footer, current_paginate, current_background, current_logo
 
+def _resolve_line_mapping(config):
+    """document.diagnostics.line_mapping: "block"（既定。#27）。Typstコンパイルエラーの行番号を
+    元のMarkdownの行番号へ逆引きする精度を読み取る。"fine"（リスト項目・テーブル行単位）は
+    未実装の将来課題のため、指定されても現時点では"block"にフォールバックする。
+    document.diagnosticsキー自体は存在するが値が空（YAMLで`diagnostics:`とだけ書いてNoneに
+    なる場合）でも例外を出さないよう、`or {}`でNoneをdictに読み替える。"""
+    line_mapping = (config.get("document", {}).get("diagnostics") or {}).get("line_mapping", "block")
+    if line_mapping not in ("off", "block"):
+        print(f"[Warning] document.diagnostics.line_mapping: {line_mapping!r} is not supported yet; falling back to 'block'.")
+        line_mapping = "block"
+    return line_mapping
+
+# TypstRenderer._emit_srcmapが生成コードへ挿し込む目印行（`// @srcmap {mdファイル}:{md行番号}`）
+# を検出する正規表現（#27）。ファイルパス自体にコロンを含みうる（Windowsの絶対パス`C:\...`）ため、
+# 末尾の数字グループのみを行番号として貪欲マッチさせ、残り全体をファイルパスとして扱う。
+SRCMAP_LINE_RE = re.compile(re.escape(TypstRenderer.SRCMAP_PREFIX) + r'(.+):(\d+)$', re.MULTILINE)
+# typst_lib.TypstErrorのメッセージ（codespan_reportingが整形する`┌─ temp_build.typ:12:5`形式）
+# から、コンパイル対象ファイル内の行:列を検出する正規表現。
+TYPST_ERROR_LOC_RE = re.compile(r'temp_build\.typ:(\d+):\d+')
+
+def _build_srcmap(typst_code):
+    """typst_code全体から`// @srcmap`の目印行を集め、[(typstコード上の行番号, mdファイル, md行番号), ...]
+    をtypst行番号の昇順で返す（#27）。line_mapping: "off"（既定はblock）で目印が無い場合は空リスト。"""
+    return [
+        (typst_code.count('\n', 0, m.start()) + 1, m.group(1), int(m.group(2)))
+        for m in SRCMAP_LINE_RE.finditer(typst_code)
+    ]
+
+def _resolve_srcmap(src_map, typst_line):
+    """typst_line以前にある直近の目印から、対応する元のMarkdownの(ファイル, 行番号)を引く（#27）。
+    目印より前（テンプレートのpreambleなど）の行はNoneを返す。"""
+    linenos = [s[0] for s in src_map]
+    idx = bisect.bisect_right(linenos, typst_line) - 1
+    return (src_map[idx][1], src_map[idx][2]) if idx >= 0 else None
+
+def _annotate_typst_error(error_text, src_map):
+    """Typstのコンパイルエラーメッセージ中の`temp_build.typ:行:列`を#27のsrc_mapで元のMarkdownの
+    (ファイル, 行番号)へ逆引きし、ヒントとして追記する。src_mapが空（line_mapping: off、または
+    該当行が目印より前）の場合は元のメッセージのまま返す。"""
+    hints = []
+    seen = set()
+    for m in TYPST_ERROR_LOC_RE.finditer(error_text):
+        typst_line = int(m.group(1))
+        if typst_line in seen:
+            continue
+        seen.add(typst_line)
+        resolved = _resolve_srcmap(src_map, typst_line)
+        if resolved:
+            md_file, md_line = resolved
+            hints.append(f"[Hint] temp_build.typ:{typst_line} corresponds to around {md_file}:{md_line}")
+    return error_text + "\n" + "\n".join(hints) if hints else error_text
+
 def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path):
     """temp_build.typへ書き出してtypstコンパイルし、成功時は使い捨ての中間ファイルを削除する。"""
     temp_typ_path = os.path.join(work_dir, "temp_build.typ")
     with open(temp_typ_path, "w", encoding="utf-8") as f:
         f.write(typst_code)
+
+    # コンパイル失敗時にTypst側の行番号を元のMarkdownへ逆引きするための対応表（#27）。
+    src_map = _build_srcmap(typst_code)
 
     out_pdf = os.path.join(outputs_dir, config["output"]["filename"])
 
@@ -1937,7 +2027,11 @@ def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, 
         typst_lib.compile(temp_typ_path, output=out_pdf, root=typst_root, font_paths=[font_dir])
         print(f"[Success] Generated PDF: {out_pdf}")
     except typst_lib.TypstError as e:
-        print(f"[Error] Compile failed: {e}")
+        # str(e)はe.message（例: "unknown variable: foo"）のみで位置情報を持たない。
+        # ファイル:行:列を含む整形済み診断（`┌─ temp_build.typ:32:1`形式）はe.diagnosticに
+        # 別途入っている（実機確認で判明。#27の行番号マッピングはこちらが無いと機能しない）。
+        diagnostic_text = getattr(e, "diagnostic", None) or str(e)
+        print(f"[Error] Compile failed:\n{_annotate_typst_error(diagnostic_text, src_map)}")
         sys.exit(1)
     except Exception as e:
         print(f"[Error] Execution failed: {e}")
@@ -1985,6 +2079,7 @@ def _build_one(tool_dir, font_dir, config_path):
     plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
     # document.glossary: false（既定。#47）。trueなら[[用語]]を検出し、巻末に索引ページを生成する。
     glossary_enabled = bool(config.get("document", {}).get("glossary", False))
+    line_mapping = _resolve_line_mapping(config)
 
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
     template_copy_path, template_root_rel_path = _prepare_template(config, tool_dir, project_dir, work_dir, typst_root)
@@ -2001,7 +2096,7 @@ def _build_one(tool_dir, font_dir, config_path):
     renderer = TypstRenderer(project_dir, typst_root=typst_root,
                               mermaid_enabled=mermaid_enabled, mermaid_auto_download=mermaid_auto_download,
                               plantuml_enabled=plantuml_enabled, plantuml_auto_download=plantuml_auto_download,
-                              glossary_enabled=glossary_enabled, tool_dir=tool_dir)
+                              glossary_enabled=glossary_enabled, tool_dir=tool_dir, line_mapping=line_mapping)
     current_landscape, current_paper = global_landscape, global_paper
     current_header, current_footer, current_paginate = effective_global_header, global_footer, global_paginate
     current_background = global_background

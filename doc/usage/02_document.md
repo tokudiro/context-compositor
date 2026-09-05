@@ -18,6 +18,7 @@
 | `background` | 本文ページの背景画像（下記） | なし |
 | `table_header` | 通常のMarkdownテーブルのヘッダ行スタイル（下記） | 無装飾 |
 | `glossary` | `[[用語]]`による巻末用語索引を生成するか（「Markdownファイルの書き方」の章を参照） | `false` |
+| `diagnostics.line_mapping` | Typstコンパイルエラーの行番号をMarkdownの行番号へ対応付ける精度（下記） | `"block"` |
 
 ## 用途別の設定早見表
 
@@ -115,6 +116,21 @@ document:
 ```
 
 指定すると目次のページ（見出し・ローマ数字のページ番号）が追加されます。本文のページ番号は目次の有無に関わらず1から始まります。
+
+## diagnostics.line_mapping: エラー行のMarkdownへの対応付け
+
+Typstのコンパイルに失敗すると、既定では`temp_build.typ:42:3`のようにビルド用の中間ファイル（生成されたTypstコード）の行番号でエラーが表示され、元のMarkdownの何行目が原因か分かりにくい問題があります。この設定で、失敗時のメッセージに元のMarkdownファイル・行番号のヒントを追加できます（[#27](https://github.com/tokudiro/context-compositor/issues/27)）。
+
+```yaml
+document:
+  diagnostics:
+    line_mapping: "block"   # 既定
+```
+
+- `"block"`（既定）: 見出し・段落・リスト全体・テーブル全体・区切り線・コードフェンス単位で対応付けます。リスト項目やテーブルのセル単位までは特定できません。
+- `"off"`: 対応付けを行わず、従来どおりTypst側の生の行番号のみを表示します。
+
+`"block"`は生成コードに目印となる行コメントを挿し込むため、コンパイル失敗時に温存される中間ファイル（`temp_build.typ`）を直接デバッグする際にも、どのコメント行がどのMarkdown行に対応するか目視で追えます。
 
 ## cover の4つのモード
 
