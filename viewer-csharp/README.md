@@ -108,6 +108,31 @@ Pythonが別途必要と考えられるが、本スパイクでは未検証。�
 （GIL解放・`PythonEngine.Shutdown()`・`Environment.Exit()`のどの段階で固まるか）は
 未実施。
 
+## 終了時ハングの原因調査（Windows実機・dotnet-dump）
+
+上記のハングを、Microsoft公式の.NET診断ツール`dotnet-dump`（開発機のグローバル環境ではなく
+一時フォルダへ`dotnet tool install --tool-path`でローカルインストールして使用）でダンプを取得し、
+`clrthreads`/`pstacks`コマンドでスレッドのマネージドスタックトレースを確認した。
+
+- メインスレッド: `Program.Main` → `System.Environment.Exit(Int32)` を呼び出した状態で停止。
+- ファイナライザースレッド: `PythonEngine.OnProcessExit` → `PythonEngine.Shutdown()` →
+  `Py.GIL()` → `PythonEngine.AcquireLock()` → `Runtime.PyGILState_Ensure()` で停止。
+
+**原因（この調査結果からの推測）**: pythonnetは`AppDomain.ProcessExit`イベントに
+`PythonEngine.OnProcessExit`を自動登録しており、プロセス終了時に自動で`PythonEngine.Shutdown()`
+を呼び出す。`Program.cs`は`Py.GIL()`を呼んだ後、GILを一度も解放せず（`using`で囲んでいない）
+そのまま`Environment.Exit(0)`を呼んでいる。そのため次の相互待ちが発生していると考えられる。
+
+1. メインスレッドが`Environment.Exit()`のランタイム終了処理として、`ProcessExit`イベント
+   ハンドラ（ファイナライザースレッド側）の完了を待つ。
+2. そのハンドラ内の`PythonEngine.Shutdown()`がGIL取得（`PyGILState_Ensure`）を試みる。
+3. GILはメインスレッドが保持したまま解放されないため、ファイナライザースレッドは永久に
+   GILを取得できず、メインスレッドも`ProcessExit`完了待ちから抜けられない。
+
+これまで「GIL解放・Shutdown()・Exit()のどれを試してもダメだった」（Linux環境での記録、
+上記参照）としていたが、これらは独立した失敗ではなく、GIL未解放のまま`Environment.Exit()`を
+呼ぶことによる一つのデッドロックパターンの現れだった可能性が高い。回避策の検証は別途行う。
+
 ## Rust版（viewer-rust）との比較メモ
 
 同じ検証環境（Linux）で、Rust + PyO3版（`../viewer-rust/`）は `render()` 呼び出し・表示に加えて
@@ -120,9 +145,9 @@ Pythonが別途必要と考えられるが、本スパイクでは未検証。�
 
 Issue #99本文の「次のステップ」に加えて、次の点。
 
-- 終了時ハングの原因切り分け。Linux・Windows（組込版Python）の両方で再現しており、
-  Microsoft Store版特有の問題ではないことは分かった。GIL解放・
-  `PythonEngine.Shutdown()`・`Environment.Exit()`のどの段階で固まるかの特定、および
-  回避策（例: 別プロセスに切り出す、タイムアウト付きの強制終了を前提にする等）の検討が
-  必要。組込版Pythonへの切り替え自体では解決しない問題だと分かったため、本実装で採用する
-  場合はこのハング対策が前提条件になる。
+- 終了時ハングの回避策の検証。原因（GIL未解放のまま`Environment.Exit()`を呼ぶことによる
+  `PythonEngine.OnProcessExit`とのデッドロック、上記「終了時ハングの原因調査」参照）は
+  特定できたため、次は回避策（例: `Environment.Exit()`前に明示的にGILを解放する、
+  `AppDomain.ProcessExit`から`PythonEngine.OnProcessExit`を外してから終了する等）を試し、
+  正常終了できるかを確認する。組込版Pythonへの切り替え自体では解決しない問題だと分かった
+  ため、本実装で採用する場合はこのハング対策が前提条件になる。
