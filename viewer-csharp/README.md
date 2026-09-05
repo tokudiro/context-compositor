@@ -82,6 +82,32 @@ VIEWER_PYTHON_EXTRA_PATH="$(/path/to/venv/bin/python3 -c 'import site; print(sit
 Pythonが別途必要と考えられるが、本スパイクでは未検証。これはIssue #99の完了条件
 「動作しない場合はどのような制約があるか」に対応する検証結果。
 
+## 検証結果（Windows実機・組込版Python）
+
+上記のMicrosoft Store版Pythonでのアクセス拒否問題の回避策として、python.orgが配布する
+「embeddable package」（組込版Python、`python-3.10.11-embed-amd64.zip`）を
+`viewer-csharp/python-embed/`（`.gitignore`対象、リポジトリにはコミットしない）に展開し、
+開発機の既存Python環境（Microsoft Store版）には一切手を加えずに検証した。
+
+- 依存パッケージ（`markdown-it-py`等、`requirements.txt`記載のもの）は、Microsoft Store版
+  Pythonの`pip`を`pip install --target=<展開先>\site-packages ...`で実行し、グローバル環境を
+  変更せずファイルとしてのみ`python-embed/site-packages/`へコピーした。
+- 組込版Pythonはデフォルトで`site-packages`の読み込みが無効化されているため、
+  `python310._pth`に`site-packages`の行を追記して有効化した。
+- `VIEWER_PYTHON_DLL`/`VIEWER_PYTHON_HOME`/`VIEWER_PYTHON_EXTRA_PATH`を、この組込版Pythonの
+  パス（`python-embed\python310.dll`、`python-embed`、`python-embed\site-packages`）に向けて
+  `dotnet run`した結果、**`TypstRenderer.render()`の呼び出し・戻り値の受け取り・表示が
+  問題なく成功した**（Microsoft Store版Pythonで発生していたアクセス拒否は解消した）。
+- **ただし、Linux環境で確認していた「プロセスの終了処理でハングする」事象が、Windows実機・
+  組込版Pythonでも再現した。** `dotnet run`は60秒経ってもプロセスが終了せず、外部から
+  強制終了する必要があった。render()の呼び出し結果自体は正しく標準出力に表示されている。
+
+**結論**: 組込版Pythonへの切り替えでMicrosoft Store版特有のアクセス拒否は回避できる。
+一方で、終了時ハングはLinux固有の事象ではなく、Windows + 組込版Pythonでも再現する
+（少なくともStore版由来の問題ではない）ことが今回新たに分かった。原因切り分け
+（GIL解放・`PythonEngine.Shutdown()`・`Environment.Exit()`のどの段階で固まるか）は
+未実施。
+
 ## Rust版（viewer-rust）との比較メモ
 
 同じ検証環境（Linux）で、Rust + PyO3版（`../viewer-rust/`）は `render()` 呼び出し・表示に加えて
@@ -92,10 +118,11 @@ Pythonが別途必要と考えられるが、本スパイクでは未検証。�
 
 ## 次のステップ（本issueの範囲外）
 
-Issue #99本文の「次のステップ」に加えて、次の2点。
+Issue #99本文の「次のステップ」に加えて、次の点。
 
-- 上記の終了時ハングの原因切り分け（Linux固有か、Windows + Microsoft Store版Pythonでの
-  再現有無を含む）。Windows実機ではアクセス拒否でPython初期化自体に到達できておらず、
-  終了時ハングの再現確認はまだできていない。
-- 非Store版Python（python.org配布版やpyenv-win等）をWindows実機にインストールした上での
-  再検証。Microsoft Store版Pythonでのアクセス拒否を回避できるかを確認する。
+- 終了時ハングの原因切り分け。Linux・Windows（組込版Python）の両方で再現しており、
+  Microsoft Store版特有の問題ではないことは分かった。GIL解放・
+  `PythonEngine.Shutdown()`・`Environment.Exit()`のどの段階で固まるかの特定、および
+  回避策（例: 別プロセスに切り出す、タイムアウト付きの強制終了を前提にする等）の検討が
+  必要。組込版Pythonへの切り替え自体では解決しない問題だと分かったため、本実装で採用する
+  場合はこのハング対策が前提条件になる。
