@@ -152,6 +152,43 @@ class TypstRenderer:
     # 取り出す。値に空白は使えない前提（Typstの寸法値・パーセントはいずれも空白を含まないため）。
     FENCE_ATTR_RE = re.compile(r'(\w+)=([^\s{}]+)')
 
+    def _fenced_char_ranges(self, text):
+        """LAYOUT_BLOCK_RE/DIAGRAM_OR_IMAGE_REは、markdown-itの通常のASTフローを経由しない、生テキスト
+        段階での正規表現マッチである（#11、#77）。そのため、使い方説明用のサンプルコードのように
+        外側の```/````フェンスで囲まれた範囲の中にたまたま`:::`ブロックや図表フェンス・画像参照と
+        同じ見た目の文字列があると、本物のレイアウトブロック/図表として誤検出してしまう（#85）。
+        textをmarkdown-itで一度パースし、最上位のfenceトークンが占める行範囲を文字オフセット範囲へ
+        変換して返す。ネストした```はCommonMarkの仕様上、外側フェンスの中身の一部として扱われ、
+        個別のfenceトークンとしては現れないため、この範囲を「保護区間」として使える。"""
+        tokens = self.md.parse(text)
+        fence_line_maps = [t.map for t in tokens if t.type == 'fence' and t.map]
+        if not fence_line_maps:
+            return []
+        line_starts = [0]
+        for line in text.splitlines(keepends=True):
+            line_starts.append(line_starts[-1] + len(line))
+        ranges = []
+        for start_line, end_line in fence_line_maps:
+            start_off = line_starts[start_line] if start_line < len(line_starts) else len(text)
+            end_off = line_starts[end_line] if end_line < len(line_starts) else len(text)
+            ranges.append((start_off, end_off))
+        return ranges
+
+    @staticmethod
+    def _in_ranges(offset, ranges):
+        return any(start <= offset < end for start, end in ranges)
+
+    def _finditer_outside_fences(self, regex, text):
+        """regex.finditer(text)のうち、_fenced_char_rangesで求めた保護区間（外側フェンスの中）に
+        あるマッチを除外して返す（#85）。"""
+        ranges = self._fenced_char_ranges(text)
+        return [m for m in regex.finditer(text) if not self._in_ranges(m.start(), ranges)]
+
+    def _search_outside_fences(self, regex, text):
+        """_finditer_outside_fencesの最初の1件版（.search()相当、#85）。"""
+        matches = self._finditer_outside_fences(regex, text)
+        return matches[0] if matches else None
+
     # Marpディレクティブコメント。7章の要件（Marp原稿との共用）を満たすため認識はするが、
     # 何も反映しない（#41、_handle_html_tokenを参照）。#42でheader/footer/paginateがfront-matter/
     # chapters[]経由では適用対象になったが、このインラインHTMLコメント形式は意図的に対象外のまま
@@ -310,7 +347,7 @@ class TypstRenderer:
         output = []
         pos = 0
         first_segment = True
-        for m in self.LAYOUT_BLOCK_RE.finditer(text):
+        for m in self._finditer_outside_fences(self.LAYOUT_BLOCK_RE, text):
             md_before = text[pos:m.start()]
             if md_before.strip() or first_segment:
                 output.append(self._render_markdown_segment(md_before, drop_leading_title and first_segment))
@@ -401,7 +438,7 @@ class TypstRenderer:
         graphviz/svgまたはMarkdown画像）の2カラムgridへ変換する。flip=Trueならlayout-leftとして
         図を左・テキストを右に配置する（#81）。ratioは(左, 右)のfr比率"""
         block_name = 'layout-left' if flip else 'layout-right'
-        match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
+        match = self._search_outside_fences(self.DIAGRAM_OR_IMAGE_RE, inner_text)
         if not match:
             print(f"[Error] '{block_name}' block in {self.current_file} must contain exactly one "
                   "```mermaid/```plantuml/```dot/```graphviz/```svg fence or a standalone image.")
@@ -426,7 +463,7 @@ class TypstRenderer:
         """::: layout-compare ... ::: ブロックを、2つの図（mermaid/plantuml/dot/graphviz/svgまたは
         Markdown画像。種類は混在可）を左右に並べた2カラムgridへ変換する。
         各図の直前にあるテキスト（キャプション）は、その図と同じ列にまとめて配置する。"""
-        matches = list(self.DIAGRAM_OR_IMAGE_RE.finditer(inner_text))
+        matches = self._finditer_outside_fences(self.DIAGRAM_OR_IMAGE_RE, inner_text)
         if len(matches) != 2:
             print(f"[Error] 'layout-compare' block in {self.current_file} must contain exactly two "
                   f"```mermaid/```plantuml/```dot/```graphviz/```svg fences or images (found {len(matches)}).")
@@ -478,7 +515,7 @@ class TypstRenderer:
         """::: layout-feature ... ::: ブロックを、写真（または図）をフルブリードで敷き、
         下部に半透明の帯とキャッチコピーを重ねるレイアウトへ変換する（#78）。
         図/画像の抽出はlayout-right/layout-compareと同じDIAGRAM_OR_IMAGE_REを再利用する（#77）。"""
-        match = self.DIAGRAM_OR_IMAGE_RE.search(inner_text)
+        match = self._search_outside_fences(self.DIAGRAM_OR_IMAGE_RE, inner_text)
         if not match:
             print(f"[Error] 'layout-feature' block in {self.current_file} must contain exactly one "
                   "```mermaid/```plantuml/```dot/```graphviz/```svg fence or a standalone image.")
