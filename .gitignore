@@ -10,3 +10,8 @@ config.yaml
 config.json
 sample/*.pdf
 doc/usage/*.pdf
+
+# viewer-csharp/ (.NET) と viewer-rust/ (Cargo) のビルド成果物（#99）
+viewer-csharp/bin/
+viewer-csharp/obj/
+viewer-rust/target/
