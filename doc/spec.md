@@ -44,17 +44,24 @@ context-compositor/                   my-project/
 * **Typstコンパイラの入手方法**: バイナリを同梱しない（2章）。PyPIの `typst` パッケージ（[typst-py](https://github.com/messense/typst-py/)、`requirements.txt` で版固定）がOSごとのホイールにコンパイラ本体を含むため、`pip install -r requirements.txt` だけで済む。`build.py` は `typst.compile(input, output=, root=)` というPython APIを直接呼び出すだけで、バイナリの配置やOS判定コードを持たない。
 
 ## 4. 使い方（CLI 仕様）
-現在実装されているCLIは次の1コマンドのみである。
+実行方法は2通りある（[#111](https://github.com/tokudiro/context-compositor/issues/111)、2章・3章参照）。どちらも同じ`build.py`のロジック（実体は`context_compositor/build.py`）を呼び出す。
+
+* **pipインストール方式**: `pipx install context-compositor`（推奨）または`pip install context-compositor`でインストールし、`context-compositor`コマンドを使う。
+* **クローンして直接叩く方式**: リポジトリをクローンし、トップレベルの`build.py`（`context_compositor/build.py`への薄いラッパー）を直接実行する。
 
 ```bash
+context-compositor --config <path/to/context-compositor.config.yaml>
+# または（クローンして直接叩く場合）
 python build.py --config <path/to/context-compositor.config.yaml>
 ```
 
 * **`--config <path>`**: 設定ファイル（yaml/json）へのパス。省略した場合はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（5章）。どちらも指定・発見できなければエラー終了する。
+* **`--config-list <path>`**: ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイルを渡し、1回の実行で複数PDFをビルドする（[#73](https://github.com/tokudiro/context-compositor/issues/73)）。`--config`とは同時指定できない。
+* **`--check-env`**: 実行環境の前提（依存パッケージ・Typstバージョン・キャッシュ済みアセット・Mermaid/PlantUMLの前提条件）を、ビルドを実行せずに確認する（[#37](https://github.com/tokudiro/context-compositor/issues/37)）。
 * 上記以外のオプション（出力先の上書き、テンプレート指定、用紙設定、ログレベル等）は存在しない。
-* **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。
+* **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。`--check-env`はNGが1件でもあれば`1`。
 
-`context-compositor` コマンド化、複数ファイル/ディレクトリの直接指定、追加オプション等の拡張は構想段階であり、実装するかどうかも含めて未定（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
+複数ファイル/ディレクトリの直接指定、追加オプション等のさらなる拡張は構想段階であり、実装するかどうかも含めて未定（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
 ## 5. パス解決規則
 パスの基準点は次のとおり一意に定める。
