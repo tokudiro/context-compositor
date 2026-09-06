@@ -145,6 +145,23 @@ def check_typst_version(repo_root):
 # 起きる状態、を表す。ビルド失敗時の原因切り分け（該当項目だけの再チェック）にも使う。
 CheckResult = namedtuple("CheckResult", ["name", "status", "message"])
 
+def _check_isolated_env():
+    """venv/pipx等の隔離された環境で実行されているかを確認する（#113）。Windows +
+    Microsoft Store版Pythonにグローバルインストールすると、ファイルシステムの透過的な
+    リダイレクトにより、サブプロセス（PlantUML用のJava等）がキャッシュファイルを見失う既知の
+    問題がある（実機・Procmonで確認済み）。venv/pipxが作るpython実行体は実体ファイルとして
+    コピーされるためこの問題を回避できる。Store版Pythonかどうかを個別に判定するのではなく、
+    「隔離環境を使っているか」だけを見る（OS/配布元を問わず有効な一般的ベストプラクティス
+    でもあるため、常にこのチェックを行う）。"""
+    if sys.prefix != sys.base_prefix:
+        return CheckResult("isolated environment", "OK", "running inside a venv/pipx-managed environment")
+    return CheckResult("isolated environment", "WARN",
+                        "not running inside an isolated environment (venv/pipx). On Windows with "
+                        "Microsoft Store Python this can cause subprocess-based features (PlantUML, "
+                        "etc.) to fail even though files appear to exist. Recommended: "
+                        "`pipx install context-compositor` (end users) or a venv + "
+                        "`pip install -e .` (developers)")
+
 def _check_pyyaml(config_path):
     """PyYAML（`import yaml`、ファイル冒頭でオプショナルインポート）の導入状況を確認する。
     YAML形式のconfigを使う場合のみ必須（JSON設定なら不要）。config未指定時は既定の
@@ -225,6 +242,7 @@ def run_env_check(repo_root, config_path):
     plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
 
     results = [
+        _check_isolated_env(),
         _check_pyyaml(config_path),
         _check_typst_env(repo_root),
         _check_font_cache(),
@@ -1204,9 +1222,11 @@ class TypstRenderer:
                     input=code, capture_output=True, text=True, encoding="utf-8", timeout=60)
             except OSError as e:
                 print(f"[Error] Failed to run PlantUML for {self.current_file}:\n{e}")
-                diag = _check_plantuml(self.plantuml_enabled, self.plantuml_auto_download)
-                if diag.status != "OK":
-                    print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
+                # 隔離環境（venv/pipx）外での実行が原因の可能性が高い（#113、ファイルが
+                # 存在するように見えてもサブプロセスから見えない既知の問題）ため優先して案内する。
+                for diag in (_check_isolated_env(), _check_plantuml(self.plantuml_enabled, self.plantuml_auto_download)):
+                    if diag.status != "OK":
+                        print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
                 sys.exit(1)
             if result.returncode != 0:
                 # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
