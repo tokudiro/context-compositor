@@ -30,15 +30,17 @@ Viewの既定値はテンプレートが持つ。個々の文書で既定値と�
   * 設定ファイルの推奨名は `context-compositor.config.yaml`。
   * `--config` で明示するか、省略時はカレントディレクトリ（ドキュメント側）直下のこのファイルを自動的に探す。ツール本体のディレクトリ（`tool_dir`）は探索しない。
 
+クローンして直接叩く場合のディレクトリ構成は以下のとおり（pipインストールした場合は、これらのファイルの代わりに`context-compositor`コマンドが使える。4章）。
+
 ```text
-<ツール本体>                          <ドキュメント（任意の場所・複数可）>
-context-compositor/                   my-project/
- ├── build.py                          ├── 01_intro.md
- ├── context-compositor.cmd # PATH に通す ├── 02_features.md
- ├── templates/      # 既定テンプレート  ├── 03_architecture.md          # 複数ファイルを1冊に結合
- └── doc/spec.md                        ├── context-compositor.config.yaml # --config で指定（既定推奨名）
-                                         ├── images/
-                                         └── manual.pdf                  # 既定の出力先
+<ツール本体>                                <ドキュメント（任意の場所・複数可）>
+context-compositor/                         my-project/
+ ├── build.py            # 後方互換ラッパー  ├── 01_intro.md
+ ├── context_compositor/                     ├── 02_features.md
+ │   ├── build.py        # 実装本体          ├── 03_architecture.md          # 複数ファイルを1冊に結合
+ │   └── templates/      # 既定テンプレート  ├── context-compositor.config.yaml # --config で指定（既定推奨名）
+ └── doc/spec.md                             ├── images/
+                                              └── manual.pdf                  # 既定の出力先
 ```
 
 * **Typstコンパイラの入手方法**: バイナリを同梱しない（2章）。PyPIの `typst` パッケージ（[typst-py](https://github.com/messense/typst-py/)、`requirements.txt` で版固定）がOSごとのホイールにコンパイラ本体を含むため、`pip install -r requirements.txt` だけで済む。`build.py` は `typst.compile(input, output=, root=)` というPython APIを直接呼び出すだけで、バイナリの配置やOS判定コードを持たない。
