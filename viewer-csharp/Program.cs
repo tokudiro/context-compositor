@@ -1,5 +1,6 @@
 // Issue #99: pythonnet経由でbuild.pyのTypstRenderer.render()を呼び出せるかを確認するだけの
 // 最小疎通確認（スパイク）。ファイル監視・PDF表示・GUI本体は範囲外。
+using System.Linq;
 using Python.Runtime;
 
 // スパイクとして固定のMarkdown文字列を変換する（ファイル指定・CLI引数は範囲外）。
@@ -19,13 +20,33 @@ Console.WriteLine($"[viewer-csharp] repo root: {repoRoot}");
 
 // 埋め込み先のPython実行体（libpython）とPYTHONHOMEは環境依存（開発機ではMicrosoft Store版Python）
 // なので、環境変数で上書きできるようにする（#99の検証項目そのもの）。
+// 環境変数が未指定の場合は、実行ファイルと同じフォルダの python-embed/（組込版Python、#102）を
+// 自動的に使う。配布時はexeの隣にpython-embed/を配置する想定（ViewerCSharp.csproj参照）なので、
+// 毎回環境変数を設定しなくても動く。
+string defaultEmbedDir = Path.Combine(AppContext.BaseDirectory, "python-embed");
+bool hasDefaultEmbed = Directory.Exists(defaultEmbedDir);
+
 string? pythonDll = Environment.GetEnvironmentVariable("VIEWER_PYTHON_DLL");
+if (string.IsNullOrEmpty(pythonDll) && hasDefaultEmbed)
+{
+    // python3.dll（stable ABI用の汎用スタブ、Py_IncRef等の実体シンボルを提供しない）を誤って
+    // 選ばないよう明示的に除外する。"python3??.dll"のようなWindowsワイルドカードは末尾の
+    // '?'が0文字にもマッチするため、python3.dllにもヒットしてしまうことを実機確認した。
+    string[] candidates = Directory.GetFiles(defaultEmbedDir, "python3*.dll")
+        .Where(f => !Path.GetFileName(f).Equals("python3.dll", StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    pythonDll = candidates.Length > 0 ? candidates[0] : null;
+}
 if (!string.IsNullOrEmpty(pythonDll))
 {
     Runtime.PythonDLL = pythonDll;
 }
 
 string? pythonHome = Environment.GetEnvironmentVariable("VIEWER_PYTHON_HOME");
+if (string.IsNullOrEmpty(pythonHome) && hasDefaultEmbed)
+{
+    pythonHome = defaultEmbedDir;
+}
 if (!string.IsNullOrEmpty(pythonHome))
 {
     PythonEngine.PythonHome = pythonHome;
@@ -55,6 +76,11 @@ using (Py.GIL())
     dynamic sys = Py.Import("sys");
     sys.path.insert(0, repoRoot);
     string? extraPath = Environment.GetEnvironmentVariable("VIEWER_PYTHON_EXTRA_PATH");
+    string defaultSitePackages = Path.Combine(defaultEmbedDir, "site-packages");
+    if (string.IsNullOrEmpty(extraPath) && Directory.Exists(defaultSitePackages))
+    {
+        extraPath = defaultSitePackages;
+    }
     if (!string.IsNullOrEmpty(extraPath))
     {
         foreach (string p in extraPath.Split(Path.PathSeparator))

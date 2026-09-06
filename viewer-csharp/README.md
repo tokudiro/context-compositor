@@ -36,6 +36,15 @@ VIEWER_PYTHON_EXTRA_PATH="$(/path/to/venv/bin/python3 -c 'import site; print(sit
 - `VIEWER_PYTHON_EXTRA_PATH`: `sys.path` へ追加のディレクトリ（venvのsite-packages等）を
   区切り文字（Linux/macOSは`:`、Windowsは`;`）で複数指定できる。
 
+Windows実機では、組込版Python（後述の「検証結果（Windows実機・組込版Python）」参照）を
+`python-embed/`に配置していれば、上記の環境変数は不要で次のように実行できる
+（詳細は「環境変数なしでの実行」参照）。
+
+```powershell
+cd viewer-csharp
+dotnet run
+```
+
 固定のサンプルMarkdown文字列を `TypstRenderer.render()` に渡し、変換結果のTypstコードを
 標準出力へ表示するだけのプログラム（`Program.cs`）。
 
@@ -166,6 +175,47 @@ PythonEngine.BeginAllowThreads(); // これを追加
 アクセス拒否も終了時ハングもなく動作する構成が確立できた。#99の完了条件
 「動作しない場合はどのような制約があるか」に対応する調査は完了し、実際に動作させる
 ための具体的な手順（組込版Python同梱 + `BeginAllowThreads()`）も得られた。
+
+## 環境変数なしでの実行（exeからの相対パス自動検出）
+
+上記まではすべて`VIEWER_PYTHON_DLL`等の環境変数を毎回手動設定して検証していたが、
+実行のたびに設定するのは煩雑で、配布時にエンドユーザーへ環境変数の設定を要求するのも
+現実的ではない。そこで次の対応をした。
+
+- [ViewerCSharp.csproj](ViewerCSharp.csproj): `python-embed/`（存在する場合のみ）を
+  ビルド出力フォルダ（実行ファイルと同じ場所）へ自動コピーするよう設定した。配布物として
+  exeと`python-embed/`が同じフォルダに揃う。
+- [Program.cs](Program.cs): 環境変数が未指定の場合、`AppContext.BaseDirectory`
+  （実行ファイルのフォルダ）直下の`python-embed/`を自動的に使うフォールバックを追加した。
+
+この対応の過程で、自動検出用のワイルドカード`python3??.dll`が、Windowsのワイルドカード
+仕様（末尾の`?`が0文字にもマッチする既知の癖）により、実体の`python310.dll`だけでなく
+機能が限定された`python3.dll`（後述）にも一致し、こちらが誤って選ばれてしまう不具合を
+実機で確認・修正した（`python3.dll`を明示的に除外）。
+
+修正後、環境変数を一切設定せずに`dotnet run`（および、ビルド済みexeを直接実行）した
+場合でも、2回連続して正常終了（exit code 0、プロセスの残留なし）することを確認した。
+
+### `python3.dll`は削除できるか（検証結果）
+
+`python-embed/`内の`python3.dll`は、CPythonの「Stable ABI」（PEP 384、マイナー
+バージョンを跨いで互換性のある限定APIサブセット）を提供する再エクスポート用DLLで、
+pythonnetの埋め込み自体（バージョン固定・フルAPI利用）には本来不要に見える。
+
+削除できるか実機で検証したところ、**削除すると`typst`パッケージ（pip版、Rust製の
+ネイティブ拡張`_typst`）のインポートに失敗した**。
+
+```
+Python.Runtime.PythonException: DLL load failed while importing _typst: 指定されたモジュールが見つかりません。
+```
+
+`_typst`は`Py_LIMITED_API`（Stable ABI）でビルドされたバイナリであるため、実行時に
+`python3.dll`を必要とする。pythonnet自身はこのDLLを使わないが、依存パッケージ側が
+使っているため、`python-embed/`からは削除できないと判明した。元に戻して正常動作する
+ことを再確認済み。なお、Program.cs側の「pythonnetがロードするDLLの自動選択」では、
+引き続き`python3.dll`を候補から除外するのが正しい（pythonnet自身が使うべきは
+`python310.dll`であり、`python3.dll`は`typst`パッケージが実行時に別途探しにいくだけ
+のため）。
 
 ## Rust版（viewer-rust）との比較メモ
 

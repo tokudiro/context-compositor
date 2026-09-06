@@ -11,4 +11,14 @@
     <PackageReference Include="pythonnet" Version="3.0.5" />
   </ItemGroup>
 
+  <!-- 組込版Python（#102、python-embed/、.gitignore対象）が存在する場合のみ、
+       実行ファイルと同じ出力フォルダへコピーする。配布物として exe と python-embed/ を
+       同じ場所に揃えるため（Program.cs側もこの配置を前提に自動検出する）。 -->
+  <ItemGroup>
+    <None Include="python-embed\**" Condition="Exists('python-embed')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>python-embed\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
 </Project>
