@@ -217,6 +217,25 @@ Python.Runtime.PythonException: DLL load failed while importing _typst: 指定�
 `python310.dll`であり、`python3.dll`は`typst`パッケージが実行時に別途探しにいくだけ
 のため）。
 
+## サードパーティ ライセンスへの対応（#102）
+
+組込版Python本体、および`build.py`が依存するPythonパッケージ（`markdown-it-py`,
+`mdit-py-plugins`, `mdurl`, `PyYAML`, `typst`）はそれぞれ別のライセンス（PSF License、
+MIT、Apache-2.0）で配布されている。配布時にライセンス条件（ライセンス全文・著作権表示の
+保持）を満たすため、次の対応をした。
+
+- 各パッケージのライセンスファイルは`pip install --target`でインストールした時点で
+  `python-embed/site-packages/*.dist-info/`配下に既に含まれている（Python本体の
+  `LICENSE.txt`も組込版パッケージに同梱済み）。`python-embed/`フォルダ全体をexeと
+  同じ場所に配置して配布すれば、これらのライセンスファイルも自動的に含まれる。
+- 一覧性のため、[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)に各コンポーネントの
+  ライセンス種別・著作権表示・ライセンスファイルの場所をまとめた。`ViewerCSharp.csproj`
+  でこのファイルもビルド出力（exeと同じフォルダ）へコピーするようにしている。
+- Apache-2.0の`typst`パッケージにはNOTICEファイルの同梱がないため、ライセンス全文
+  （`LICENSE`）の保持のみで足りると判断した。
+
+これで#102の完了条件「ライセンス遵守の方法が明らかになっている」に対応できた。
+
 ## Rust版（viewer-rust）との比較メモ
 
 同じ検証環境（Linux）で、Rust + PyO3版（`../viewer-rust/`）は `render()` 呼び出し・表示に加えて
@@ -228,6 +247,6 @@ Python.Runtime.PythonException: DLL load failed while importing _typst: 指定�
 ## 次のステップ（本issueの範囲外）
 
 Issue #99本文の「次のステップ」を参照。終了時ハングは「終了時ハングの解決（Windows実機）」
-節の対策で解消済み。組込版Python同梱の本実装への組み込み（`._pth`編集やsite-packages
-vendoringの自動化、ライセンス同梱等）は [Issue #102](https://github.com/tokudiro/context-compositor/issues/102)
-で別途検討する。
+節の対策で解消済み。組込版Python同梱・ライセンス対応は [Issue #102](https://github.com/tokudiro/context-compositor/issues/102)
+の完了条件を満たしたため対応済み。`._pth`編集やsite-packages vendoringの自動化（現状は
+手動手順）は、本実装（GUI本体作成）に着手する際に改めて検討する。

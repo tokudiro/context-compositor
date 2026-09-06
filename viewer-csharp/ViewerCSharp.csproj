@@ -21,4 +21,12 @@
     </None>
   </ItemGroup>
 
+  <!-- 組込版Python・依存パッケージのライセンス条件（#102）を満たすため、
+       サードパーティ ライセンス一覧も配布物に含める。 -->
+  <ItemGroup>
+    <None Include="THIRD-PARTY-NOTICES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
