@@ -13,6 +13,7 @@ import tarfile
 import time
 import tempfile
 import platform
+import importlib.metadata
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
@@ -94,6 +95,31 @@ def find_system_java():
         # 旧来の "1.8.0_xxx" 形式（Java 8以前）。実質バージョンは2つ目の要素。
         major = int(parts[1])
     return java_path if major >= 11 else None
+
+def check_typst_version(tool_dir):
+    """requirements.txtでピン留めされたtypstのバージョンと、実際にインストールされている
+    バージョンが一致するかを確認する（#49）。9章の決定論的出力の前提が崩れていないかの
+    簡易チェック。不一致でも警告のみでビルドは継続する（Fail-fastにはしない）。
+    requirements.txtが見つからない、または`typst`の行が無い場合は何もしない
+    （将来pipインストール化された場合等、requirements.txtが同梱されないケースを想定）。"""
+    requirements_path = os.path.join(tool_dir, "requirements.txt")
+    if not os.path.exists(requirements_path):
+        return
+    with open(requirements_path, "r", encoding="utf-8") as f:
+        requirements_text = f.read()
+    m = re.search(r'^typst==([\w.]+)', requirements_text, re.MULTILINE)
+    if not m:
+        return
+    pinned_version = m.group(1)
+    try:
+        installed_version = importlib.metadata.version("typst")
+    except importlib.metadata.PackageNotFoundError:
+        return
+    if installed_version != pinned_version:
+        print(f"[Warning] Installed typst version ({installed_version}) does not match "
+              f"the version pinned in requirements.txt ({pinned_version}). Output may differ "
+              f"from what's expected (see spec ch.9, deterministic output). "
+              f"Run: pip install typst=={pinned_version}")
 
 class TypstRenderer:
     """
@@ -2045,6 +2071,7 @@ def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, 
 
 def build():
     tool_dir = os.path.dirname(os.path.abspath(__file__))
+    check_typst_version(tool_dir)
     args = parse_args()
     font_dir = ensure_fonts(tool_dir)
 
