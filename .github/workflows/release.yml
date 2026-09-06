@@ -5,12 +5,9 @@ name: Release
 # doc/usage/context-compositor.config.yaml は graphviz/mermaid とも無効なため、
 # Node.js/JRE等の追加ランタイムは不要でPython + pipのみで完結する（2章）。
 #
-# ツール（context-compositor）とドキュメント（doc/usage/）を、あえて同一コミットでも
-# 2回に分けてチェックアウトしている。doc/usage/12_github_actions.mdで案内している
-# 「別リポジトリとして使う」通常構成と全く同じ手順を踏むことで、リリースの度にその手順
-# 自体が壊れていないかを継続的に検証する（#24）。context-compositor側はrepository:を
-# 指定するだけでdefaultブランチ(master)を取得する（実際の外部利用でtagを固定しないのと
-# 同じ状況を再現し、最新のbuild.pyが既存のconfig.yamlと噛み合うかも同時に確認できる）。
+# doc/usage/12_github_actions.mdで案内している2つの使い方（クローンして直接叩く／
+# pipインストールする、#50・#111・#112）を、それぞれ別ジョブで実際にビルドし、
+# リリースの度にどちらの手順も壊れていないかを継続的に検証する。
 on:
   push:
     tags:
@@ -20,6 +17,12 @@ permissions:
   contents: write
 
 jobs:
+  # 「クローンして直接叩く」使い方（#24で実証済み）。こちらの成果物を実際にリリースへ
+  # 添付する。ツール（context-compositor）とドキュメント（doc/usage/）を、あえて同一
+  # コミットでも2回に分けてチェックアウトし、「別リポジトリとして使う」通常構成と
+  # 全く同じ手順を踏む。context-compositor側はrepository:を指定するだけでdefault
+  # ブランチ(master)を取得する（実際の外部利用でtagを固定しないのと同じ状況を再現し、
+  # 最新のbuild.pyが既存のconfig.yamlと噛み合うかも同時に確認できる）。
   build-usage-guide:
     runs-on: ubuntu-latest
     steps:
@@ -48,3 +51,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: this-repo/doc/usage/context-compositor-usage-guide.pdf
+
+  # 「pipインストールする」使い方（#111）の継続検証。タグを固定せずdefaultブランチを
+  # 直接インストールする点はbuild-usage-guideと同じ理由（最新masterの動作確認）。
+  # こちらはリリースへのアセット添付は行わず、ビルドが成功することの確認のみ。
+  verify-pip-install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo (docs/config)
+        uses: actions/checkout@v4
+        with:
+          path: this-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install context-compositor via pip
+        run: pip install "git+https://github.com/tokudiro/context-compositor.git@master"
+
+      - name: Build usage guide PDF via the context-compositor command
+        run: context-compositor --config this-repo/doc/usage/context-compositor.config.yaml
