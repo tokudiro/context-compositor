@@ -14,6 +14,7 @@ import time
 import tempfile
 import platform
 import importlib.metadata
+import platformdirs
 from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +62,14 @@ SYSTEM_BROWSER_COMMANDS = [
     "google-chrome", "google-chrome-stable", "chromium-browser", "chromium",
     "msedge", "microsoft-edge", "microsoft-edge-stable",
 ]
+
+def _user_cache_dir():
+    """フォント/JRE/PlantUMLの取得物を置くアプリ専用のキャッシュディレクトリを返す。
+    tool_dir（インストール場所）ではなくOS標準のユーザー領域（Windows:
+    %LOCALAPPDATA%\\context-compositor\\Cache、Linux: ~/.cache/context-compositor、
+    macOS: ~/Library/Caches/context-compositor）を使うことで、「クローンして直接叩く」
+    でも「pipインストール」でも同じ場所にキャッシュが置ける（#50、#110）。"""
+    return platformdirs.user_cache_dir("context-compositor", appauthor=False)
 
 def find_system_browser():
     """既存のChrome/Edgeの実行ファイルパスを探す。見つからなければNone。"""
@@ -153,11 +162,11 @@ def _check_typst_env(tool_dir):
         return CheckResult("typst", "OK", f"{installed_version} (matches requirements.txt)")
     return CheckResult("typst", "WARN", f"{installed_version} installed but requirements.txt pins {pinned_version}")
 
-def _check_font_cache(tool_dir):
-    font_dir = os.path.join(tool_dir, ".fonts-cache", "NotoSansJP")
+def _check_font_cache():
+    font_dir = os.path.join(_user_cache_dir(), "fonts", "NotoSansJP")
     missing = [name for name in NOTO_SANS_JP_FILES if not os.path.exists(os.path.join(font_dir, name))]
     if not missing:
-        return CheckResult("Noto Sans JP font", "OK", "cached under .fonts-cache/")
+        return CheckResult("Noto Sans JP font", "OK", f"cached under {font_dir}")
     return CheckResult("Noto Sans JP font", "WARN", "not cached yet; will be downloaded (one-time) on first build")
 
 def _check_mermaid(mermaid_enabled, mermaid_auto_download):
@@ -178,7 +187,7 @@ def _check_mermaid(mermaid_enabled, mermaid_auto_download):
                         "no system Chrome/Edge found and plugins.mermaid_auto_download is false. "
                         "Install Google Chrome or Microsoft Edge, or set plugins.mermaid_auto_download: true")
 
-def _check_plantuml(tool_dir, plantuml_enabled, plantuml_auto_download):
+def _check_plantuml(plantuml_enabled, plantuml_auto_download):
     if not plantuml_enabled:
         return CheckResult("plantuml", "OK", "disabled (plugins.plantuml: false)")
     java_path = find_system_java()
@@ -188,9 +197,9 @@ def _check_plantuml(tool_dir, plantuml_enabled, plantuml_auto_download):
     asset = TEMURIN_JRE_ASSETS.get(key)
     if asset:
         _, _, _, java_rel_parts = asset
-        java_bin_path = os.path.join(tool_dir, ".jre-cache", TEMURIN_JRE_TOP_DIR, *java_rel_parts)
+        java_bin_path = os.path.join(_jre_cache_root(), TEMURIN_JRE_TOP_DIR, *java_rel_parts)
         if os.path.exists(java_bin_path):
-            return CheckResult("plantuml", "OK", "no local Java 11+, but Eclipse Temurin JRE already cached under .jre-cache/")
+            return CheckResult("plantuml", "OK", f"no local Java 11+, but Eclipse Temurin JRE already cached under {_jre_cache_root()}")
     if plantuml_auto_download:
         return CheckResult("plantuml", "WARN",
                             "no local Java 11+ found; Eclipse Temurin JRE will be downloaded "
@@ -216,9 +225,9 @@ def run_env_check(tool_dir, config_path):
     results = [
         _check_pyyaml(config_path),
         _check_typst_env(tool_dir),
-        _check_font_cache(tool_dir),
+        _check_font_cache(),
         _check_mermaid(mermaid_enabled, mermaid_auto_download),
-        _check_plantuml(tool_dir, plantuml_enabled, plantuml_auto_download),
+        _check_plantuml(plantuml_enabled, plantuml_auto_download),
     ]
     _print_check_results(results)
     return 1 if any(r.status == "NG" for r in results) else 0
@@ -1159,7 +1168,7 @@ class TypstRenderer:
             if java_bin:
                 print(f"[Info] Reusing system Java for PlantUML rendering: {java_bin}")
             elif self.plantuml_auto_download:
-                java_bin = ensure_temurin_jre(self.tool_dir)
+                java_bin = ensure_temurin_jre()
             else:
                 print("[Error] No local Java 11+ found; required to render PlantUML diagrams. "
                       "Install Java 11+, or set plugins.plantuml_auto_download: true "
@@ -1167,7 +1176,7 @@ class TypstRenderer:
                 sys.exit(1)
             self._plantuml_java_bin = java_bin
         if self._plantuml_jar_path is None:
-            self._plantuml_jar_path = ensure_plantuml_jar(self.tool_dir)
+            self._plantuml_jar_path = ensure_plantuml_jar()
         return self._plantuml_java_bin, self._plantuml_jar_path
 
     def _render_plantuml(self, code, width=None, height=None):
@@ -1195,7 +1204,7 @@ class TypstRenderer:
                     input=code, capture_output=True, text=True, encoding="utf-8", timeout=60)
             except OSError as e:
                 print(f"[Error] Failed to run PlantUML for {self.current_file}:\n{e}")
-                diag = _check_plantuml(self.tool_dir, self.plantuml_enabled, self.plantuml_auto_download)
+                diag = _check_plantuml(self.plantuml_enabled, self.plantuml_auto_download)
                 if diag.status != "OK":
                     print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
                 sys.exit(1)
@@ -1466,7 +1475,7 @@ def resolve_template_path(template_path_value, tool_dir, project_dir):
     return os.path.join(tool_dir, "templates", template_path_value + ".typ")
 
 # CJKフォント(Noto Sans JP)の取得元。バイナリはリポジトリに同梱せず、初回ビルド時にのみ
-# ここから取得しtool_dir/.fonts-cache/に保存する（2章の「最小限のダウンロード」方針）。
+# ここから取得しユーザーキャッシュディレクトリ（#110）に保存する（2章の「最小限のダウンロード」方針）。
 # 版とSHA256を固定し、同梱バイナリと違って取得結果が変わらないようにする（9章の決定論的出力）。
 NOTO_SANS_JP_RELEASE_URL = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/16_NotoSansJP.zip"
 NOTO_SANS_JP_FILES = {
@@ -1474,17 +1483,18 @@ NOTO_SANS_JP_FILES = {
     "NotoSansJP-Bold.otf": "1b0edfb500b73a4fa8a4fcaae1bbbd403994e08e73e3e0da37e70d3853f42c5f",
 }
 
-def ensure_fonts(tool_dir):
-    """Noto Sans JP（Regular/Bold）が tool_dir/.fonts-cache/NotoSansJP/ になければダウンロードする。
-    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
-    font_dir = os.path.join(tool_dir, ".fonts-cache", "NotoSansJP")
+def ensure_fonts():
+    """Noto Sans JP（Regular/Bold）がユーザーキャッシュディレクトリの fonts/NotoSansJP/ に
+    なければダウンロードする。2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで
+    完結する（#110）。"""
+    font_dir = os.path.join(_user_cache_dir(), "fonts", "NotoSansJP")
     os.makedirs(font_dir, exist_ok=True)
 
     missing = [name for name in NOTO_SANS_JP_FILES if not os.path.exists(os.path.join(font_dir, name))]
     if not missing:
         return font_dir
 
-    print("[Info] Downloading Noto Sans JP font (one-time; cached under .fonts-cache/)...")
+    print(f"[Info] Downloading Noto Sans JP font (one-time; cached under {font_dir})...")
     zip_path = os.path.join(font_dir, "_download.zip")
     try:
         urllib.request.urlretrieve(NOTO_SANS_JP_RELEASE_URL, zip_path)
@@ -1582,10 +1592,14 @@ def _temurin_platform_key():
     arch_key = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
     return os_key, arch_key
 
-def ensure_temurin_jre(tool_dir):
-    """tool_dir/.jre-cache/ にEclipse Temurin JREが無ければダウンロード・展開する。java実行
-    ファイルの絶対パスを返す。2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで
-    完結する（find_system_java()でシステムJavaが見つからなかった場合のみ呼ばれる、#22）。"""
+def _jre_cache_root():
+    return os.path.join(_user_cache_dir(), "jre")
+
+def ensure_temurin_jre():
+    """ユーザーキャッシュディレクトリの jre/ にEclipse Temurin JREが無ければダウンロード・
+    展開する。java実行ファイルの絶対パスを返す。2回目以降のビルドはキャッシュを使い、
+    ネットワークアクセスなしで完結する（find_system_java()でシステムJavaが見つからなかった
+    場合のみ呼ばれる、#22、#110）。"""
     key = _temurin_platform_key()
     asset = TEMURIN_JRE_ASSETS.get(key)
     if asset is None:
@@ -1594,7 +1608,7 @@ def ensure_temurin_jre(tool_dir):
         sys.exit(1)
     filename, sha256, archive_type, java_rel_parts = asset
 
-    cache_root = os.path.join(tool_dir, ".jre-cache")
+    cache_root = _jre_cache_root()
     java_bin_path = os.path.join(cache_root, TEMURIN_JRE_TOP_DIR, *java_rel_parts)
     if os.path.exists(java_bin_path):
         return java_bin_path
@@ -1602,7 +1616,7 @@ def ensure_temurin_jre(tool_dir):
     os.makedirs(cache_root, exist_ok=True)
     archive_path = os.path.join(cache_root, filename)
     print(f"[Info] No local Java 11+ found; downloading Eclipse Temurin JRE {TEMURIN_JRE_RELEASE} "
-          "(one-time; cached under .jre-cache/)...")
+          f"(one-time; cached under {cache_root})...")
     try:
         urllib.request.urlretrieve(TEMURIN_JRE_BASE_URL + filename, archive_path)
     except OSError as e:
@@ -1640,16 +1654,16 @@ def ensure_temurin_jre(tool_dir):
 PLANTUML_JAR_URL = "https://github.com/plantuml/plantuml/releases/download/v1.2026.6/plantuml-mit-1.2026.6.jar"
 PLANTUML_JAR_SHA256 = "5814ab31dd569f3772747c3a0c1b52fd3bf2996b8132c62d17006d758c2d3fe3"
 
-def ensure_plantuml_jar(tool_dir):
-    """plantuml.jarがtool_dir/.plantuml-cache/になければダウンロードする。
-    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
-    cache_dir = os.path.join(tool_dir, ".plantuml-cache")
+def ensure_plantuml_jar():
+    """plantuml.jarがユーザーキャッシュディレクトリの plantuml/ になければダウンロードする。
+    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する（#110）。"""
+    cache_dir = os.path.join(_user_cache_dir(), "plantuml")
     os.makedirs(cache_dir, exist_ok=True)
     jar_path = os.path.join(cache_dir, "plantuml-mit.jar")
     if os.path.exists(jar_path):
         return jar_path
 
-    print("[Info] Downloading plantuml.jar (one-time; cached under .plantuml-cache/)...")
+    print(f"[Info] Downloading plantuml.jar (one-time; cached under {cache_dir})...")
     try:
         urllib.request.urlretrieve(PLANTUML_JAR_URL, jar_path)
     except OSError as e:
@@ -2204,7 +2218,7 @@ def build():
         sys.exit(run_env_check(tool_dir, args.config))
 
     check_typst_version(tool_dir)
-    font_dir = ensure_fonts(tool_dir)
+    font_dir = ensure_fonts()
 
     if args.config_list:
         config_paths = _read_config_list(args.config_list)
