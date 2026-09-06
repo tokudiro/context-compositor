@@ -4,7 +4,7 @@ Typstコンパイルエラーの行番号を元のMarkdownの行番号へ逆引�
 実機検証で見つけた不具合（document.diagnostics: の値がNoneになるケースでのクラッシュ、
 TypstError.diagnosticとmessageの取り違え）を中心に、壊れたら気づけるように固定する。
 """
-import build
+import context_compositor.build as build
 
 
 PREFIX = build.TypstRenderer.SRCMAP_PREFIX
