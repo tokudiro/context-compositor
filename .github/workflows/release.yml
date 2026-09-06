@@ -51,6 +51,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: this-repo/doc/usage/context-compositor-usage-guide.pdf
+          # 本文を自動生成する（マージ済みPRの一覧。v0.0.13までは本文が空のまま公開されて
+          # いたため追加した）。カテゴリ分けした詳細なノートにしたい場合は、公開後に
+          # `gh release edit`で上書きする運用のままでよい（自動生成はたたき台として機能する）。
+          generate_release_notes: true
 
   # 「pipインストールする」使い方（#111）の継続検証。タグを固定せずdefaultブランチを
   # 直接インストールする点はbuild-usage-guideと同じ理由（最新masterの動作確認）。
