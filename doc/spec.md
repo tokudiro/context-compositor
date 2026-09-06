@@ -59,7 +59,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
 
 * **`--config <path>`**: 設定ファイル（yaml/json）へのパス。省略した場合はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（5章）。どちらも指定・発見できなければエラー終了する。
 * **`--config-list <path>`**: ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイルを渡し、1回の実行で複数PDFをビルドする（[#73](https://github.com/tokudiro/context-compositor/issues/73)）。`--config`とは同時指定できない。
-* **`--check-env`**: 実行環境の前提（依存パッケージ・Typstバージョン・キャッシュ済みアセット・Mermaid/PlantUMLの前提条件）を、ビルドを実行せずに確認する（[#37](https://github.com/tokudiro/context-compositor/issues/37)）。
+* **`--check-env`**: 実行環境の前提（隔離環境（venv/pipx）の使用有無、依存パッケージ、Typstバージョン、キャッシュ済みアセット、Mermaid/PlantUMLの前提条件）を、ビルドを実行せずに確認する（[#37](https://github.com/tokudiro/context-compositor/issues/37)、[#113](https://github.com/tokudiro/context-compositor/issues/113)）。
 * 上記以外のオプション（出力先の上書き、テンプレート指定、用紙設定、ログレベル等）は存在しない。
 * **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。`--check-env`はNGが1件でもあれば`1`。
 
@@ -139,7 +139,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
   * **行頭ブロック記法のエスケープ**: 行頭の `=` `-` `+` `/` `1.` は Typst の見出し・リスト等として解釈され、地の文が勝手に見出し化して目次にまで混入する。改行直後のテキストは行頭記号をエスケープする（実測で確認済みの実害）。
 * **リスト構造の忠実な再現**: markdown-it はタイトなリストの段落トークンに `hidden` を立てる。これを無視すると Typst 側が loose list と解釈し、箇条書きが間延びする。リストの入れ子はスタックの深さに応じたインデントで出力し、階層を保持する。
 * **決定論的出力とバージョン固定**: `requirements.txt` のパーサーライブラリに加え、Typstコンパイラ本体および利用する全プラグイン（例: `diagraph:0.3.7`）のバージョンを厳密固定する。Typstコンパイラ自体はPyPIパッケージ（3章）で版固定されているため、同梱バイナリとの食い違いは構造的に起きない。
-  * **実行時のバージョン整合性チェック**（[#49](https://github.com/tokudiro/context-compositor/issues/49)）: `requirements.txt`にピン留めされたTypstのバージョンと、実際にインストールされているバージョンが一致するかを毎回のビルド時に自動確認する。不一致でも警告のみでビルドは継続する（Fail-fastにはしない）。同じチェックは`--check-env`（4章）でも実行できる。「クローンして直接叩く」場合の`requirements.txt`が無いpipインストール環境では、比較対象が無いため何もしない。
+  * **実行時のバージョン整合性チェック**（[#49](https://github.com/tokudiro/context-compositor/issues/49)）: `requirements.txt`にピン留めされたTypstのバージョンと、実際にインストールされているバージョンが一致するかを毎回のビルド時に自動確認する。不一致でも警告のみでビルドは継続する（Fail-fastにはしない）。同じチェックは`--check-env`（4章）でも実行できる。`requirements.txt`が同梱されないpipインストール環境（[#111](https://github.com/tokudiro/context-compositor/issues/111)）では、比較対象が無いため何もしない。
 * **日本語フォントの指定**: OSのデフォルトフォントに依存せず、CJK対応のオープンソースフォントを`font_paths`（Typst Python APIの`typst.compile(..., font_paths=[...])`、CLIの`--font-path`に相当）で明示的に指定する。テンプレート側で`Yu Gothic`等のOSフォントを直接指定してはならない。**（実装済み）** 採用フォントは Noto Sans JP（[SIL Open Font License](https://github.com/notofonts/noto-cjk/blob/main/Sans/OFL.txt)、再配布可）。取得方法は2章、実装は`build.py`の`ensure_fonts()`を参照。`templates/template.typ`・`templates/slide.typ`とも`set text(font: "Noto Sans JP", ...)`のみを指定し、OSフォント名は書かない。Noto Sans JPに無いグリフ（絵文字等）はTypstが自動でシステムフォントにフォールバックする。
 
 ## 10. 動的ページレイアウトとデータ駆動型アグリゲーション
