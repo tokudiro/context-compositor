@@ -1,0 +1,11 @@
+id: LM-05
+title: "srcmapマーカーの実際の埋め込み（tests/test_line_mapping.py::TestEmitSrcmapIntegration）"
+priority: High
+steps: |
+  - 見出し・段落・リスト・テーブル・hr・コードフェンスを含むMarkdownを、`line_mapping="block"`の`TypstRenderer.render()`に渡す。
+  - `line_mapping="off"`の場合、front-matter除去後の場合、リスト項目が複数ある場合も試す。
+expected: |
+  - `block`モードでは、見出し・段落・リスト・テーブル・hr・フェンスの各ブロックの先頭に、元のMarkdown行番号を示すマーカーが挿入されること
+  - `off`モードではマーカーが一切出力されないこと
+  - 同じリスト内の各項目は個別にマークされず、リスト全体で1回だけマークされること
+  - front-matterを除去しても、後続行の行番号がずれないこと

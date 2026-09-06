@@ -1,0 +1,10 @@
+id: LM-02
+title: "srcmapマーカーの抽出（tests/test_line_mapping.py::TestBuildSrcmap）"
+priority: High
+steps: |
+  - 生成済みのTypstコード中に`// @srcmap ...`マーカーを複数埋め込んだ文字列を`_build_srcmap()`に渡す。
+  - マーカーが1つも無いテキスト、Windowsの絶対パス（`C:\...`、パス自体に`:`を含む）をファイル名に使ったマーカーも試す。
+expected: |
+  - マーカーの(Typst側行番号, 元ファイル名, 元の行番号)の対応が、出現順どおりのリストとして得られること
+  - マーカーが無い場合は空リストになること
+  - ファイル名中の`:`と行番号区切りの`:`を混同せず、Windowsパスを正しく分離できること

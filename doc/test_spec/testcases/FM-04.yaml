@@ -1,0 +1,8 @@
+id: FM-04
+title: "front-matterのfont_sizeによるスコープ適用（tests/test_front_matter.py::TestFontSize）"
+priority: Medium
+steps: |
+  - front-matterに`font_size: 12pt`を指定した章と、指定しない章を、それぞれ`_render_markdown_chapter()`に渡す。
+expected: |
+  - `font_size`を指定した章は、その章の内容全体が`#[#set text(size: 12pt) ...]`というスコープ付きブロックで囲まれること（他の章に影響しないこと）
+  - 指定が無い章は、このラップ自体が行われないこと

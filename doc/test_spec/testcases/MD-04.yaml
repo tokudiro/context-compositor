@@ -1,0 +1,9 @@
+id: MD-04
+title: "blockquoteとGitHub形式alertの変換（tests/test_markdown_basics.py::TestBlockquoteAndAlert）"
+priority: High
+steps: |
+  - 通常のblockquote（1行・複数行）と、`> [!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]`で始まるGitHub形式alertを`render()`に渡す。
+expected: |
+  - 通常のblockquoteは`#quote(block: true)[...]`に変換されること
+  - 複数行のblockquoteは行間が`#linebreak()`でつながること
+  - alertマーカーで始まるblockquoteは、種別に応じた`#callout(kind: "...")[...]`に変換され、マーカー自体は本文から取り除かれること

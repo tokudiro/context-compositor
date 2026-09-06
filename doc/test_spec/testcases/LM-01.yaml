@@ -1,0 +1,9 @@
+id: LM-01
+title: "line_mapping設定の解決（tests/test_line_mapping.py::TestResolveLineMapping）"
+priority: High
+steps: |
+  - `_resolve_line_mapping()`に、設定未指定・`off`明示・`block`明示・`diagnostics:`キーはあるが値がNone・非対応の値、の各configを渡す。
+expected: |
+  - 未指定時の既定値は`"block"`になること
+  - `diagnostics:`とだけ書いて値が省略された場合（YAMLの仕様上Noneになる）も`"block"`にフォールバックすること
+  - 非対応の値を指定した場合は`"block"`にフォールバックしたうえで`[Warning]`を出力すること

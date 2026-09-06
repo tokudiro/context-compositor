@@ -1,0 +1,8 @@
+id: MD-01
+title: "見出し・段落の変換（tests/test_markdown_basics.py::TestHeadingsAndParagraphs）"
+priority: High
+steps: |
+  - H1/H2の見出しと、通常の段落を含むMarkdownを`TypstRenderer.render()`に渡す。
+expected: |
+  - 見出しレベルに応じて`=`/`==`のTypst見出し構文に変換されること
+  - 段落はそのままの本文として出力されること

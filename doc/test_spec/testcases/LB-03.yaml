@@ -1,0 +1,8 @@
+id: LB-03
+title: "layout-compareの基本動作（tests/test_layout_blocks.py::TestLayoutCompare）"
+priority: High
+steps: |
+  - 2つの図表フェンスを含む`::: layout-compare ... :::`ブロック、図が1つしかないブロックを`render()`に渡す。
+expected: |
+  - 2つの図がそれぞれ独立したカラムに、左右に並べて配置されること
+  - 図の数が2つでない場合は、フォールバックせず`sys.exit(1)`で即座に終了すること
