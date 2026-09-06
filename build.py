@@ -1059,7 +1059,7 @@ class TypstRenderer:
                   "(downloads Playwright's own Chromium, approx. 700MB), or set plugins.mermaid: false.")
             sys.exit(1)
 
-        mermaid_js_path = ensure_mermaid_js(self.tool_dir)
+        mermaid_js_path = ensure_mermaid_js()
 
         context = self._mermaid_browser.contexts[0] if self._mermaid_browser.contexts else self._mermaid_browser.new_context()
         page = context.new_page()
@@ -1526,16 +1526,16 @@ def ensure_fonts():
 MERMAID_JS_URL = "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js"
 MERMAID_JS_SHA256 = "18327bef70d96fb505fe7287d9f6a7362ebf07ff6576ddfaffb1a06f3e1a2954"
 
-def ensure_mermaid_js(tool_dir):
-    """mermaid.min.jsが tool_dir/.mermaid-cache/ になければダウンロードする。
-    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する。"""
-    cache_dir = os.path.join(tool_dir, ".mermaid-cache")
+def ensure_mermaid_js():
+    """mermaid.min.jsがユーザーキャッシュディレクトリの mermaid/ になければダウンロードする。
+    2回目以降のビルドはキャッシュを使い、ネットワークアクセスなしで完結する（#110）。"""
+    cache_dir = os.path.join(_user_cache_dir(), "mermaid")
     os.makedirs(cache_dir, exist_ok=True)
     js_path = os.path.join(cache_dir, "mermaid.min.js")
     if os.path.exists(js_path):
         return js_path
 
-    print("[Info] Downloading mermaid.min.js (one-time; cached under .mermaid-cache/)...")
+    print(f"[Info] Downloading mermaid.min.js (one-time; cached under {cache_dir})...")
     try:
         urllib.request.urlretrieve(MERMAID_JS_URL, js_path)
     except OSError as e:
