@@ -23,9 +23,33 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// 【Windows実機での自動検出、#101】PYTHONHOMEが未指定の場合、実行ファイルと同じ
+/// フォルダに組込版Python一式（python310.dll・python310.zip・site-packages等）が
+/// 直接展開されている前提で、そこを自動的にPYTHONHOMEとして使う。
+/// C#版（#100）のようにDLLパスをAPIで明示指定する仕組みがPyO3にはなく、python310.dll自体は
+/// Windowsの標準DLL検索順序（実行ファイルと同じフォルダが最優先）でロードされるため、
+/// C#版のような「exeの隣にpython-embed/サブフォルダ」構成はそのままでは使えない
+/// （実行ファイルと同じフォルダに直接置く必要がある）。
+fn set_default_python_home_if_unset() {
+    if std::env::var_os("PYTHONHOME").is_some() {
+        return;
+    }
+    let Ok(exe_path) = std::env::current_exe() else {
+        return;
+    };
+    let Some(exe_dir) = exe_path.parent() else {
+        return;
+    };
+    if exe_dir.join("python310.dll").exists() {
+        std::env::set_var("PYTHONHOME", exe_dir);
+    }
+}
+
 fn main() -> PyResult<()> {
     let root = repo_root();
     println!("[viewer-rust] repo root: {}", root.display());
+
+    set_default_python_home_if_unset();
 
     Python::with_gil(|py| -> PyResult<()> {
         let version: String = py.import_bound("sys")?.getattr("version")?.extract()?;
