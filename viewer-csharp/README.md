@@ -131,7 +131,41 @@ Pythonが別途必要と考えられるが、本スパイクでは未検証。�
 
 これまで「GIL解放・Shutdown()・Exit()のどれを試してもダメだった」（Linux環境での記録、
 上記参照）としていたが、これらは独立した失敗ではなく、GIL未解放のまま`Environment.Exit()`を
-呼ぶことによる一つのデッドロックパターンの現れだった可能性が高い。回避策の検証は別途行う。
+呼ぶことによる一つのデッドロックパターンの現れだった可能性が高い、という仮説を立てた。
+
+**この仮説は不十分だった。** `using (Py.GIL())`でGIL State API（`PyGILState_Ensure`/
+`PyGILState_Release`）を使ってGILを解放するよう修正し再検証したが、再度dotnet-dumpで
+確認したところ、まったく同じ箇所（ファイナライザースレッドの`PyGILState_Ensure()`）で
+依然としてハングした。真の原因と解決策は次節を参照。
+
+## 終了時ハングの解決（Windows実機）
+
+pythonnet公式リポジトリの
+[Issue #1701「`PythonEngine.Shutdown()` hangs if called from `AppDomain.ProcessExit`」](https://github.com/pythonnet/pythonnet/issues/1701)
+に、本スパイクと同じ症状の既知の挙動が報告されていた。
+
+**真の原因**: `PythonEngine.Initialize()`を呼んだ直後、メインスレッドはPythonの実行
+コンテキスト（スレッドステート）を暗黙的に保持したままになる。この暗黙の保持は
+`using (Py.GIL())`のGIL State API（`PyGILState_Ensure`/`Release`、内部的にGILの
+獲得・解放を一時的に行うだけ）では解放されない。そのため、プロセス終了時にpythonnetの
+`OnProcessExit`（別スレッドで実行される）が`PyGILState_Ensure()`でGILを取得しようとしても、
+メインスレッドが暗黙に保持したままのコンテキストにブロックされ続ける。
+
+**解決策**: `PythonEngine.Initialize()`の直後に`PythonEngine.BeginAllowThreads()`
+（CPythonの`PyEval_SaveThread`に相当）を呼び、このスレッドステートを明示的に手放す。
+`Program.cs`にこの1行を追加したところ、組込版Pythonを使ったWindows実機での実行で
+**2回連続して`Environment.Exit(0)`後にexit code 0で正常終了し、プロセスの残留も
+発生しなかった**。
+
+```csharp
+PythonEngine.Initialize();
+PythonEngine.BeginAllowThreads(); // これを追加
+```
+
+これにより、組込版Python同梱と組み合わせることで、Windows実機でC#(pythonnet)版が
+アクセス拒否も終了時ハングもなく動作する構成が確立できた。#99の完了条件
+「動作しない場合はどのような制約があるか」に対応する調査は完了し、実際に動作させる
+ための具体的な手順（組込版Python同梱 + `BeginAllowThreads()`）も得られた。
 
 ## Rust版（viewer-rust）との比較メモ
 
@@ -143,11 +177,7 @@ Pythonが別途必要と考えられるが、本スパイクでは未検証。�
 
 ## 次のステップ（本issueの範囲外）
 
-Issue #99本文の「次のステップ」に加えて、次の点。
-
-- 終了時ハングの回避策の検証。原因（GIL未解放のまま`Environment.Exit()`を呼ぶことによる
-  `PythonEngine.OnProcessExit`とのデッドロック、上記「終了時ハングの原因調査」参照）は
-  特定できたため、次は回避策（例: `Environment.Exit()`前に明示的にGILを解放する、
-  `AppDomain.ProcessExit`から`PythonEngine.OnProcessExit`を外してから終了する等）を試し、
-  正常終了できるかを確認する。組込版Pythonへの切り替え自体では解決しない問題だと分かった
-  ため、本実装で採用する場合はこのハング対策が前提条件になる。
+Issue #99本文の「次のステップ」を参照。終了時ハングは「終了時ハングの解決（Windows実機）」
+節の対策で解消済み。組込版Python同梱の本実装への組み込み（`._pth`編集やsite-packages
+vendoringの自動化、ライセンス同梱等）は [Issue #102](https://github.com/tokudiro/context-compositor/issues/102)
+で別途検討する。
