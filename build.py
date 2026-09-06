@@ -14,6 +14,7 @@ import time
 import tempfile
 import platform
 import importlib.metadata
+from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
 from markdown_it import MarkdownIt
@@ -96,30 +97,139 @@ def find_system_java():
         major = int(parts[1])
     return java_path if major >= 11 else None
 
+def _typst_version_info(tool_dir):
+    """typstのインストール済みバージョンと、requirements.txtでピン留めされたバージョンを返す
+    （#49のビルド時チェックと#37の--check-envで共用する）。requirements.txtが無い/`typst`の
+    行が無い場合、pinned側はNoneになる。"""
+    try:
+        installed_version = importlib.metadata.version("typst")
+    except importlib.metadata.PackageNotFoundError:
+        installed_version = None
+
+    requirements_path = os.path.join(tool_dir, "requirements.txt")
+    pinned_version = None
+    if os.path.exists(requirements_path):
+        with open(requirements_path, "r", encoding="utf-8") as f:
+            requirements_text = f.read()
+        m = re.search(r'^typst==([\w.]+)', requirements_text, re.MULTILINE)
+        if m:
+            pinned_version = m.group(1)
+    return installed_version, pinned_version
+
 def check_typst_version(tool_dir):
     """requirements.txtでピン留めされたtypstのバージョンと、実際にインストールされている
     バージョンが一致するかを確認する（#49）。9章の決定論的出力の前提が崩れていないかの
     簡易チェック。不一致でも警告のみでビルドは継続する（Fail-fastにはしない）。
-    requirements.txtが見つからない、または`typst`の行が無い場合は何もしない
-    （将来pipインストール化された場合等、requirements.txtが同梱されないケースを想定）。"""
-    requirements_path = os.path.join(tool_dir, "requirements.txt")
-    if not os.path.exists(requirements_path):
-        return
-    with open(requirements_path, "r", encoding="utf-8") as f:
-        requirements_text = f.read()
-    m = re.search(r'^typst==([\w.]+)', requirements_text, re.MULTILINE)
-    if not m:
-        return
-    pinned_version = m.group(1)
-    try:
-        installed_version = importlib.metadata.version("typst")
-    except importlib.metadata.PackageNotFoundError:
-        return
-    if installed_version != pinned_version:
+    毎回のビルド時に自動実行される。requirements.txtが見つからない、または`typst`の行が
+    無い場合は何もしない（将来pipインストール化された場合等を想定）。"""
+    installed_version, pinned_version = _typst_version_info(tool_dir)
+    if installed_version and pinned_version and installed_version != pinned_version:
         print(f"[Warning] Installed typst version ({installed_version}) does not match "
               f"the version pinned in requirements.txt ({pinned_version}). Output may differ "
               f"from what's expected (see spec ch.9, deterministic output). "
               f"Run: pip install typst=={pinned_version}")
+
+# 実行環境の前提を事前確認する`--check-env`（#37）。status: "OK"/"WARN"/"NG"。
+# NGはこのままではビルドが失敗する状態、WARNは動作はするが何か（自動ダウンロード等）が
+# 起きる状態、を表す。ビルド失敗時の原因切り分け（該当項目だけの再チェック）にも使う。
+CheckResult = namedtuple("CheckResult", ["name", "status", "message"])
+
+def _check_pyyaml(config_path):
+    """PyYAML（`import yaml`、ファイル冒頭でオプショナルインポート）の導入状況を確認する。
+    YAML形式のconfigを使う場合のみ必須（JSON設定なら不要）。config未指定時は既定の
+    探索対象がYAMLのため、YAML想定として扱う。"""
+    uses_yaml = config_path is None or config_path.lower().endswith((".yaml", ".yml"))
+    if yaml is not None:
+        return CheckResult("PyYAML", "OK", "installed")
+    if uses_yaml:
+        return CheckResult("PyYAML", "NG", "not installed but a YAML config is used. Run: pip install PyYAML==6.0.2")
+    return CheckResult("PyYAML", "OK", "not installed, but not needed for a JSON config")
+
+def _check_typst_env(tool_dir):
+    installed_version, pinned_version = _typst_version_info(tool_dir)
+    if pinned_version is None:
+        return CheckResult("typst", "OK", f"{installed_version} installed (no pinned version in requirements.txt to compare)")
+    if installed_version == pinned_version:
+        return CheckResult("typst", "OK", f"{installed_version} (matches requirements.txt)")
+    return CheckResult("typst", "WARN", f"{installed_version} installed but requirements.txt pins {pinned_version}")
+
+def _check_font_cache(tool_dir):
+    font_dir = os.path.join(tool_dir, ".fonts-cache", "NotoSansJP")
+    missing = [name for name in NOTO_SANS_JP_FILES if not os.path.exists(os.path.join(font_dir, name))]
+    if not missing:
+        return CheckResult("Noto Sans JP font", "OK", "cached under .fonts-cache/")
+    return CheckResult("Noto Sans JP font", "WARN", "not cached yet; will be downloaded (one-time) on first build")
+
+def _check_mermaid(mermaid_enabled, mermaid_auto_download):
+    if not mermaid_enabled:
+        return CheckResult("mermaid", "OK", "disabled (plugins.mermaid: false)")
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError:
+        return CheckResult("mermaid", "NG", "the 'playwright' package is not installed. Run: pip install playwright==1.62.0")
+    browser_path = find_system_browser()
+    if browser_path:
+        return CheckResult("mermaid", "OK", f"system browser found: {browser_path}")
+    if mermaid_auto_download:
+        return CheckResult("mermaid", "WARN",
+                            "no system Chrome/Edge found; Playwright will download its own Chromium "
+                            "(one-time; approx. 700MB) on first mermaid render")
+    return CheckResult("mermaid", "NG",
+                        "no system Chrome/Edge found and plugins.mermaid_auto_download is false. "
+                        "Install Google Chrome or Microsoft Edge, or set plugins.mermaid_auto_download: true")
+
+def _check_plantuml(tool_dir, plantuml_enabled, plantuml_auto_download):
+    if not plantuml_enabled:
+        return CheckResult("plantuml", "OK", "disabled (plugins.plantuml: false)")
+    java_path = find_system_java()
+    if java_path:
+        return CheckResult("plantuml", "OK", f"system Java 11+ found: {java_path}")
+    key = _temurin_platform_key()
+    asset = TEMURIN_JRE_ASSETS.get(key)
+    if asset:
+        _, _, _, java_rel_parts = asset
+        java_bin_path = os.path.join(tool_dir, ".jre-cache", TEMURIN_JRE_TOP_DIR, *java_rel_parts)
+        if os.path.exists(java_bin_path):
+            return CheckResult("plantuml", "OK", "no local Java 11+, but Eclipse Temurin JRE already cached under .jre-cache/")
+    if plantuml_auto_download:
+        return CheckResult("plantuml", "WARN",
+                            "no local Java 11+ found; Eclipse Temurin JRE will be downloaded "
+                            "(one-time; approx. 50MB) on first plantuml render")
+    return CheckResult("plantuml", "NG",
+                        "no local Java 11+ found and plugins.plantuml_auto_download is false. "
+                        "Install Java 11+, or set plugins.plantuml_auto_download: true")
+
+def run_env_check(tool_dir, config_path):
+    """`--check-env`本体。configを指定すればそのplugins設定を反映し、未指定なら全項目を
+    既定値（すべて有効）でチェックする。実際のビルドは行わない。戻り値はexit code
+    （NGが1件でもあれば1、無ければ0。WARNのみ・全部OKなら0）。"""
+    if config_path is not None:
+        _project_dir, config, _chapters = _load_project_config(config_path)
+        plugins_config = config.get("plugins") or {}
+    else:
+        plugins_config = {}
+    mermaid_enabled = bool(plugins_config.get("mermaid", True))
+    mermaid_auto_download = bool(plugins_config.get("mermaid_auto_download", False))
+    plantuml_enabled = bool(plugins_config.get("plantuml", True))
+    plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
+
+    results = [
+        _check_pyyaml(config_path),
+        _check_typst_env(tool_dir),
+        _check_font_cache(tool_dir),
+        _check_mermaid(mermaid_enabled, mermaid_auto_download),
+        _check_plantuml(tool_dir, plantuml_enabled, plantuml_auto_download),
+    ]
+    _print_check_results(results)
+    return 1 if any(r.status == "NG" for r in results) else 0
+
+def _print_check_results(results):
+    for r in results:
+        print(f"[{r.status}] {r.name}: {r.message}")
+    counts = {"OK": 0, "WARN": 0, "NG": 0}
+    for r in results:
+        counts[r.status] += 1
+    print(f"\nSummary: {counts['OK']} OK, {counts['WARN']} WARN, {counts['NG']} NG")
 
 class TypstRenderer:
     """
@@ -916,6 +1026,9 @@ class TypstRenderer:
                 self._mermaid_browser = self._mermaid_playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
             except Exception as e:
                 print(f"[Error] Failed to connect to headless browser for mermaid rendering: {e}")
+                diag = _check_mermaid(self.mermaid_enabled, self.mermaid_auto_download)
+                if diag.status != "OK":
+                    print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
                 sys.exit(1)
         elif self.mermaid_auto_download:
             print("[Info] No system Chrome/Edge found; plugins.mermaid_auto_download is true, so Playwright "
@@ -1082,6 +1195,9 @@ class TypstRenderer:
                     input=code, capture_output=True, text=True, encoding="utf-8", timeout=60)
             except OSError as e:
                 print(f"[Error] Failed to run PlantUML for {self.current_file}:\n{e}")
+                diag = _check_plantuml(self.tool_dir, self.plantuml_enabled, self.plantuml_auto_download)
+                if diag.status != "OK":
+                    print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
                 sys.exit(1)
             if result.returncode != 0:
                 # 仕様9章のFail-fast方針: 描画失敗時はテキストへフォールバックせず即エラー
@@ -1687,9 +1803,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Markdown -> Typst -> PDF ドキュメントビルダー")
     parser.add_argument("--config", help="設定ファイル(yaml/json)へのパス。省略時はカレントディレクトリの context-compositor.config.yaml/.json を探す。")
     parser.add_argument("--config-list", help="ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイル。空行と'#'で始まる行は無視される。--configとは同時指定できない。相対パスはこのファイル自身の置き場所が基準。")
+    parser.add_argument("--check-env", action="store_true",
+                         help="ビルドを実行せず、実行環境の前提（依存パッケージ・Typstバージョン・"
+                              "フォントキャッシュ・mermaid/plantumlに必要なツール）を確認して終了する（#37）。"
+                              "--configと併用するとそのplugins設定を反映する。NGが1件でもあればexit code 1。")
     args = parser.parse_args()
     if args.config and args.config_list:
         parser.error("--config と --config-list は同時に指定できません。")
+    if args.check_env and args.config_list:
+        parser.error("--check-env と --config-list は同時に指定できません。")
     return args
 
 def _read_config_list(list_path):
@@ -2038,7 +2160,7 @@ def _annotate_typst_error(error_text, src_map):
             hints.append(f"[Hint] temp_build.typ:{typst_line} corresponds to around {md_file}:{md_line}")
     return error_text + "\n" + "\n".join(hints) if hints else error_text
 
-def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path):
+def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path, tool_dir):
     """temp_build.typへ書き出してtypstコンパイルし、成功時は使い捨ての中間ファイルを削除する。"""
     temp_typ_path = os.path.join(work_dir, "temp_build.typ")
     with open(temp_typ_path, "w", encoding="utf-8") as f:
@@ -2061,6 +2183,11 @@ def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, 
         sys.exit(1)
     except Exception as e:
         print(f"[Error] Execution failed: {e}")
+        # 原因が記述ミスではなく環境不備（typstのバージョン不一致等）の可能性があるため、
+        # 関連するチェックだけを再実行して診断ヒントを出す（#37。全項目は--check-env参照）。
+        diag = _check_typst_env(tool_dir)
+        if diag.status != "OK":
+            print(f"[Hint] [{diag.status}] {diag.name}: {diag.message}")
         sys.exit(1)
 
     # ビルド成功後、使い捨ての中間ファイルを削除する（12章、#20）。
@@ -2071,8 +2198,12 @@ def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, 
 
 def build():
     tool_dir = os.path.dirname(os.path.abspath(__file__))
-    check_typst_version(tool_dir)
     args = parse_args()
+
+    if args.check_env:
+        sys.exit(run_env_check(tool_dir, args.config))
+
+    check_typst_version(tool_dir)
     font_dir = ensure_fonts(tool_dir)
 
     if args.config_list:
@@ -2165,7 +2296,7 @@ def _build_one(tool_dir, font_dir, config_path):
     if glossary_enabled and renderer.glossary_terms:
         typst_code += _build_glossary_section(renderer.glossary_terms)
 
-    _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path)
+    _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, font_dir, template_copy_path, tool_dir)
 
 if __name__ == "__main__":
     build()
