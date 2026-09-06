@@ -17,7 +17,7 @@ Viewの既定値はテンプレートが持つ。個々の文書で既定値と�
 * **Python中心・最小限のダウンロード**: コアはPython（`build.py`）のみで完結する。追加が必要なものも、その場でのダウンロードで完結させ、常駐サーバーやコンテナは要求しない。
   * Typstコンパイラ: バイナリを同梱せず、PyPIのホイール経由で取得する（3章）。
   * オプトインの図表プラグイン: Mermaidは`pip install playwright`とシステムにインストール済みのChrome/Edge（新規ダウンロードはしない）、PlantUMLはJREをその場取得する（11章、[#35](https://github.com/tokudiro/context-compositor/issues/35)）。
-  * 日本語CJKフォント: リポジトリに同梱せず取得（ダウンロード）する方式とする。Noto Sans JP（Regular/Bold）を初回ビルド時に `tool_dir/.fonts-cache/` へダウンロード・キャッシュし、以降はキャッシュを使う（9章）。
+  * 日本語CJKフォント: リポジトリに同梱せず取得（ダウンロード）する方式とする。Noto Sans JP（Regular/Bold）を初回ビルド時にOS標準のユーザーキャッシュ領域（`platformdirs`経由。Windows: `%LOCALAPPDATA%\context-compositor\Cache`、Linux: `~/.cache/context-compositor`、macOS: `~/Library/Caches/context-compositor`）へダウンロード・キャッシュし、以降はキャッシュを使う（9章）。`tool_dir`（ツール本体のインストール場所）を使わないのは、「クローンして直接叩く」「pipインストール」いずれの実行方式でも同じ場所にキャッシュを置くため（[#50](https://github.com/tokudiro/context-compositor/issues/50)、[#110](https://github.com/tokudiro/context-compositor/issues/110)）。
 * **外部サーバー・SaaS非依存**: どこかの外部サーバーやSaaSに依存しない。図表描画を含め、外部APIへの通信によるコンテンツ生成は一切行わず、常に完全ローカルで完結させる。これは絶対要件であり、11章のプラグインにも適用される。
 * **GitHub Actions上での完結**: 上記2点の帰結として、GitHub Actions（`ubuntu-latest` などのGitHub-hosted runner）上だけで、セルフホストサーバーなしに完結してビルドできる。
 * **ローカル環境（Windows/Linux/macOS）**: 同じ理由で、Python（および必要に応じてJRE等の軽量ランタイム）さえ用意すれば、Windows/Linux/macOSいずれでも同一の手順でビルドできる。
@@ -30,31 +30,40 @@ Viewの既定値はテンプレートが持つ。個々の文書で既定値と�
   * 設定ファイルの推奨名は `context-compositor.config.yaml`。
   * `--config` で明示するか、省略時はカレントディレクトリ（ドキュメント側）直下のこのファイルを自動的に探す。ツール本体のディレクトリ（`tool_dir`）は探索しない。
 
+クローンして直接叩く場合のディレクトリ構成は以下のとおり（pipインストールした場合は、これらのファイルの代わりに`context-compositor`コマンドが使える。4章）。
+
 ```text
-<ツール本体>                          <ドキュメント（任意の場所・複数可）>
-context-compositor/                   my-project/
- ├── build.py                          ├── 01_intro.md
- ├── context-compositor.cmd # PATH に通す ├── 02_features.md
- ├── templates/      # 既定テンプレート  ├── 03_architecture.md          # 複数ファイルを1冊に結合
- └── doc/spec.md                        ├── context-compositor.config.yaml # --config で指定（既定推奨名）
-                                         ├── images/
-                                         └── manual.pdf                  # 既定の出力先
+<ツール本体>                                <ドキュメント（任意の場所・複数可）>
+context-compositor/                         my-project/
+ ├── build.py            # 後方互換ラッパー  ├── 01_intro.md
+ ├── context_compositor/                     ├── 02_features.md
+ │   ├── build.py        # 実装本体          ├── 03_architecture.md          # 複数ファイルを1冊に結合
+ │   └── templates/      # 既定テンプレート  ├── context-compositor.config.yaml # --config で指定（既定推奨名）
+ └── doc/spec.md                             ├── images/
+                                              └── manual.pdf                  # 既定の出力先
 ```
 
 * **Typstコンパイラの入手方法**: バイナリを同梱しない（2章）。PyPIの `typst` パッケージ（[typst-py](https://github.com/messense/typst-py/)、`requirements.txt` で版固定）がOSごとのホイールにコンパイラ本体を含むため、`pip install -r requirements.txt` だけで済む。`build.py` は `typst.compile(input, output=, root=)` というPython APIを直接呼び出すだけで、バイナリの配置やOS判定コードを持たない。
 
 ## 4. 使い方（CLI 仕様）
-現在実装されているCLIは次の1コマンドのみである。
+実行方法は2通りある（[#111](https://github.com/tokudiro/context-compositor/issues/111)、2章・3章参照）。どちらも同じ`build.py`のロジック（実体は`context_compositor/build.py`）を呼び出す。
+
+* **pipインストール方式**: `pipx install context-compositor`（推奨）または`pip install context-compositor`でインストールし、`context-compositor`コマンドを使う。
+* **クローンして直接叩く方式**: リポジトリをクローンし、トップレベルの`build.py`（`context_compositor/build.py`への薄いラッパー）を直接実行する。
 
 ```bash
+context-compositor --config <path/to/context-compositor.config.yaml>
+# または（クローンして直接叩く場合）
 python build.py --config <path/to/context-compositor.config.yaml>
 ```
 
 * **`--config <path>`**: 設定ファイル（yaml/json）へのパス。省略した場合はカレントディレクトリ直下の `context-compositor.config.yaml`/`context-compositor.config.json` を探す（5章）。どちらも指定・発見できなければエラー終了する。
+* **`--config-list <path>`**: ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイルを渡し、1回の実行で複数PDFをビルドする（[#73](https://github.com/tokudiro/context-compositor/issues/73)）。`--config`とは同時指定できない。
+* **`--check-env`**: 実行環境の前提（隔離環境（venv/pipx）の使用有無、依存パッケージ、Typstバージョン、キャッシュ済みアセット、Mermaid/PlantUMLの前提条件）を、ビルドを実行せずに確認する（[#37](https://github.com/tokudiro/context-compositor/issues/37)、[#113](https://github.com/tokudiro/context-compositor/issues/113)）。
 * 上記以外のオプション（出力先の上書き、テンプレート指定、用紙設定、ログレベル等）は存在しない。
-* **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。
+* **終了コード**: 成功 `0` / 失敗 `1`。入力欠損・画像欠損・コンパイルエラーは即時失敗する（Fail-fast、10章）。`--check-env`はNGが1件でもあれば`1`。
 
-`context-compositor` コマンド化、複数ファイル/ディレクトリの直接指定、追加オプション等の拡張は構想段階であり、実装するかどうかも含めて未定（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
+複数ファイル/ディレクトリの直接指定、追加オプション等のさらなる拡張は構想段階であり、実装するかどうかも含めて未定（[#25](https://github.com/tokudiro/context-compositor/issues/25)）。
 
 ## 5. パス解決規則
 パスの基準点は次のとおり一意に定める。
@@ -130,6 +139,7 @@ python build.py --config <path/to/context-compositor.config.yaml>
   * **行頭ブロック記法のエスケープ**: 行頭の `=` `-` `+` `/` `1.` は Typst の見出し・リスト等として解釈され、地の文が勝手に見出し化して目次にまで混入する。改行直後のテキストは行頭記号をエスケープする（実測で確認済みの実害）。
 * **リスト構造の忠実な再現**: markdown-it はタイトなリストの段落トークンに `hidden` を立てる。これを無視すると Typst 側が loose list と解釈し、箇条書きが間延びする。リストの入れ子はスタックの深さに応じたインデントで出力し、階層を保持する。
 * **決定論的出力とバージョン固定**: `requirements.txt` のパーサーライブラリに加え、Typstコンパイラ本体および利用する全プラグイン（例: `diagraph:0.3.7`）のバージョンを厳密固定する。Typstコンパイラ自体はPyPIパッケージ（3章）で版固定されているため、同梱バイナリとの食い違いは構造的に起きない。
+  * **実行時のバージョン整合性チェック**（[#49](https://github.com/tokudiro/context-compositor/issues/49)）: `requirements.txt`にピン留めされたTypstのバージョンと、実際にインストールされているバージョンが一致するかを毎回のビルド時に自動確認する。不一致でも警告のみでビルドは継続する（Fail-fastにはしない）。同じチェックは`--check-env`（4章）でも実行できる。`requirements.txt`が同梱されないpipインストール環境（[#111](https://github.com/tokudiro/context-compositor/issues/111)）では、比較対象が無いため何もしない。
 * **日本語フォントの指定**: OSのデフォルトフォントに依存せず、CJK対応のオープンソースフォントを`font_paths`（Typst Python APIの`typst.compile(..., font_paths=[...])`、CLIの`--font-path`に相当）で明示的に指定する。テンプレート側で`Yu Gothic`等のOSフォントを直接指定してはならない。**（実装済み）** 採用フォントは Noto Sans JP（[SIL Open Font License](https://github.com/notofonts/noto-cjk/blob/main/Sans/OFL.txt)、再配布可）。取得方法は2章、実装は`build.py`の`ensure_fonts()`を参照。`templates/template.typ`・`templates/slide.typ`とも`set text(font: "Noto Sans JP", ...)`のみを指定し、OSフォント名は書かない。Noto Sans JPに無いグリフ（絵文字等）はTypstが自動でシステムフォントにフォールバックする。
 
 ## 10. 動的ページレイアウトとデータ駆動型アグリゲーション
@@ -159,10 +169,10 @@ python build.py --config <path/to/context-compositor.config.yaml>
 2. **PlantUML**: ローカルJava環境を要求し、純Javaレイアウトエンジン「Smetana」（`-Playout=smetana`）を採用してGraphviz(dot)等の外部バイナリへの依存を避ける。**（実装済み）**
    * **ライセンス**: 本体は`plantuml-mit-*.jar`（MIT）を採用する。`mit-light`版（DITAA等ごく一部を除き機能同等、約7.4MB）も検討したが、jarの中身を比較した結果、差分は`stdlib/`配下のクラウドアイコン素材と絵文字データのみだった。原稿（Markdown、GitHub管理・AI生成）には絵文字が含まれ得るため、フル機能の`mit`版（約17.6MB）を採用する（[#22](https://github.com/tokudiro/context-compositor/issues/22)）。
    * **実行環境の前提**: `find_system_java()`（`build.py`）でシステムのJava（11以上。PlantUML最新版のクラスファイル要件）を検出して再利用する（2章）。GitHub-hosted runner（`ubuntu-latest`）にはJavaが標準搭載されているため、そのまま動く。見つからない場合の挙動は`plugins.plantuml_auto_download`（既定`true`）で制御する。`true`ならEclipse Temurin JRE（Adoptium配布、GPLv2+Classpath Exception。OpenJDK本体と同じライセンス系統）をバージョン・プラットフォーム別にURL・SHA256を固定して自動取得し（9章の決定論的出力）、`false`なら本章3のMermaid/Chrome（[#35](https://github.com/tokudiro/context-compositor/issues/35)）と同じFail-fastになる。既定を自動取得側にしたのは、Chromeと違いJavaは手元環境への標準搭載率が低く、「Java 11以上を入れて」という指示だけでは行き止まりになりやすい（配布元の選択肢が多く迷いやすい）ため、ローカル開発時の利便性を優先する設計判断による。ダウンロードされる実体が約49.7MB（Chromiumの約700MBの1桁下）に収まることも判断材料にした。
-   * **実装**: `plantuml.jar`をコンテンツのSHA256込みで`tool_dir/.plantuml-cache/`へ取得・キャッシュし、`java -jar plantuml.jar -tsvg -pipe -Playout=smetana`へ図のソースを標準入力で渡し、標準出力のSVGをそのまま使う。常駐プロセスを持つMermaidのヘッドレスブラウザとは異なり、図ごとにsubprocessを都度起動する（描画コストがMermaidほど大きくないため）。コンテンツのSHA256ハッシュをキー名として`project_dir/.context-compositor/cache/`にSVG結果をキャッシュする点、描画失敗（構文エラー等、終了コード非0）でテキストへフォールバックせず即エラー終了する点はMermaidと同じ方針。`@startuml`/`@enduml`の自動補完は行わない（明示性を優先）。
+   * **実装**: `plantuml.jar`をコンテンツのSHA256込みでOS標準のユーザーキャッシュ領域（2章のフォントと同じ`platformdirs`経由の場所）へ取得・キャッシュし、`java -jar plantuml.jar -tsvg -pipe -Playout=smetana`へ図のソースを標準入力で渡し、標準出力のSVGをそのまま使う。常駐プロセスを持つMermaidのヘッドレスブラウザとは異なり、図ごとにsubprocessを都度起動する（描画コストがMermaidほど大きくないため）。コンテンツのSHA256ハッシュをキー名として`project_dir/.context-compositor/cache/`にSVG結果をキャッシュする点、描画失敗（構文エラー等、終了コード非0）でテキストへフォールバックせず即エラー終了する点はMermaidと同じ方針。`@startuml`/`@enduml`の自動補完は行わない（明示性を優先）。
 3. **Mermaid**: ヘッドレスブラウザでの描画を要するため、別途環境構築を伴うオプトイン機能として扱う。**（実装済み）**
    * **実行環境の前提**: `find_system_browser()`（`build.py`）でシステムにインストール済みのChrome/Edgeを検出して再利用する（2章）。GitHub-hosted runner（`ubuntu-latest`）には標準搭載のChromeがあるため、そのまま動く。見つからない場合の挙動は`plugins.mermaid_auto_download`（既定`false`）で制御する。既定ではFail-fastでエラー終了する（[#35](https://github.com/tokudiro/context-compositor/issues/35)。npm/npxに依存しなくなったため、npm経由の代替ダウンロードという選択肢が無い）。`true`にした場合のみ、`playwright install chromium`相当の呼び出しでPlaywright自身のChromium（実測約700MB）を取得し、`connect_over_cdp()`ではなく`chromium.launch()`で起動する。この約700MBはまさに#34/#35で避けた規模であるため既定はfalseのままとし、PlantUML側の`plugins.plantuml_auto_download`（既定`true`、JREは約49.7MB）とは意図的に非対称にしている（#22の設計議論）。
-   * **実装**: Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、UMD形式、全図種込み。実測約3.4MB）を`tool_dir/.mermaid-cache/`へバージョン・SHA256を固定してダウンロード・キャッシュし（9章）、Playwright（Python版）の`connect_over_cdp()`でシステムブラウザにCDP接続してブラウザ内で`mermaid.render()`を直接呼び出す（`mermaid-cli`丸ごとの導入は不要、Node.js自体が不要になった）。1回のビルドでヘッドレスブラウザ・ページは1つだけ起動し、複数のMermaid図で使い回す。コンテンツのSHA256ハッシュをキー名として `project_dir/.context-compositor/cache/` にSVG結果をキャッシュする。mermaid既定のHTMLラベル（`<foreignObject>`）はTypstのraw SVGレンダラーが描画できないため、`flowchart.htmlLabels`とトップレベルの`htmlLabels`両方を`false`に指定し通常のSVG `<text>` 要素で出力する（トップレベルのみでは効かないことを実測で確認済み）。
+   * **実装**: Mermaid公式配布の単一バンドルJS（`mermaid.min.js`、UMD形式、全図種込み。実測約3.4MB）をOS標準のユーザーキャッシュ領域（2章のフォントと同じ`platformdirs`経由の場所）へバージョン・SHA256を固定してダウンロード・キャッシュし（9章）、Playwright（Python版）の`connect_over_cdp()`でシステムブラウザにCDP接続してブラウザ内で`mermaid.render()`を直接呼び出す（`mermaid-cli`丸ごとの導入は不要、Node.js自体が不要になった）。1回のビルドでヘッドレスブラウザ・ページは1つだけ起動し、複数のMermaid図で使い回す。コンテンツのSHA256ハッシュをキー名として `project_dir/.context-compositor/cache/` にSVG結果をキャッシュする。mermaid既定のHTMLラベル（`<foreignObject>`）はTypstのraw SVGレンダラーが描画できないため、`flowchart.htmlLabels`とトップレベルの`htmlLabels`両方を`false`に指定し通常のSVG `<text>` 要素で出力する（トップレベルのみでは効かないことを実測で確認済み）。
    * **図とテキストのレイアウト**: `::: layout-right ... :::`（テキスト左・図右の2カラム）、`::: layout-compare ... :::`（2つの図を左右に並べる）という独自のMarkdown拡張記法を用意した。ASTの通常フローに入る前の生テキスト段階で正規表現により切り出し、個別にTypstの`grid`へ変換している。横長の図をlayout-compareで並べると縮小されすぎて読めなくなることを実測で確認済み。正方形に近い図でのみ使うこと。
    * **`layout-left`と比率指定（[#81](https://github.com/tokudiro/context-compositor/issues/81)）**: `layout-right`の左右反転版として`layout-left`（図を左・テキストを右）を追加した。共通の`_render_layout_block(inner_text, flip, ratio)`に統合し、`flip`で列の並び順（`[image, text]`か`[text, image]`）と`align`の左右を切り替える。数値の合計が100である必要はなく（`fr`は相対比率のため`{left=3 right=7}`と`{left=30 right=70}`は同じ見た目）、それ以上のバリデーションは行わない（`layout-columns`の`n`が列数の妥当性チェックをしていないことと方針を揃えた）。省略時の既定比率は`layout-right`がテキスト35:図65、`layout-left`が図65:テキスト35と左右対称にしている。
      * **記法の変更（[#83](https://github.com/tokudiro/context-compositor/issues/83)）**: 当初は`layout-right-30:70`のような末尾`-左:右`サフィックス方式（`layout-columns-N`と同じパターン）だった。`:::`ブロック自体がPandocのfenced divsに似た記法であること、#82でフェンスに`{width=50%}`という中括弧属性記法を導入したことを踏まえ、`layout-right {left=30 right=70}`という中括弧属性方式に統一した（このツールはまだ利用者が限定的なため破壊的変更を許容した）。属性名を`width`/`height`ではなく`left`/`right`にしたのは、#82の「画像1枚の物理サイズ」（Typst寸法値）という意味とlayout-rightの「2カラムの相対比率」が衝突するのを避けるため。ブロック名自体は中括弧の外（`layout-right {...}`）に置き、Pandoc標準の`::: {.layout-right ...}`という書き方（ブロック名も中括弧内に`.クラス名`として書く）には寄せていない。このツールの原稿がPandocでもそのまま動くことは目標にしておらず（[#84](https://github.com/tokudiro/context-compositor/issues/84)は逆方向の話）、フェンス側の`{width=50%}`との内部一貫性を優先した。

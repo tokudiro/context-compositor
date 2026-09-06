@@ -45,6 +45,8 @@ docs/manual_inspection.config.yaml
 python build.py --config-list configs.txt
 ```
 
+pipインストール方式（導入手順は`README.md`参照）の場合は、`context-compositor --config-list configs.txt`と読み替えてください。
+
 各行の相対パスは、`configs.txt` 自身の置き場所が基準になります（他の設定ファイルの相対パス基準と同じルール）。`--config` と `--config-list` は同時に指定できません。
 
 いずれかのPDFのビルドが失敗すると、その時点で処理を止めます（残りのconfigは実行されません）。どのconfigの処理中に失敗したかは、標準出力の `[Build] <config path>` 行で確認できます。
