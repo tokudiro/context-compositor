@@ -18,8 +18,26 @@ AIが生成し、人間が加筆・修正する複数のテキストファイル
 
 ## 必要なもの
 
-- Python 3
-- 依存ライブラリ（[requirements.txt](requirements.txt)）
+- Python 3.10以上
+
+インストール・実行方法は2通りあります。
+
+### 方法A: `pip install`（推奨）
+
+```bash
+pipx install context-compositor
+```
+
+`pipx` はツールを隔離された環境にインストールし、`context-compositor` コマンドを使えるようにします（多くのユーザーにお勧めの方法）。このツール自体を開発する場合は、コードの変更を即座に反映できる `venv` + editable install（`pip install -e .`）を使ってください。
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -e .        # Windowsの場合: .venv\Scripts\pip install -e .
+```
+
+> **Windowsをお使いの方へ**: 必ず `pipx` または `venv` 経由でインストールしてください。Microsoft Store版Pythonへ直接インストールすることは避けてください。Store版Pythonは `%LOCALAPPDATA%` への書き込みを内部で専用の隔離フォルダへ透過的にリダイレクトするため、ファイルが存在するように見えてもPlantUMLの描画（サブプロセス経由）が失敗することがあります。`pipx`/`venv` は実体の（サンドボックス化されていない）Python実行ファイルを使うため、この問題を回避できます。ビルド前に `context-compositor --check-env` を実行すると、この問題を含む環境の不備を事前に確認できます。
+
+### 方法B: クローンして直接実行（インストール不要）
 
 ```bash
 pip install -r requirements.txt
@@ -29,7 +47,14 @@ Typstコンパイラ本体はバイナリを同梱せず、上記の `pip instal
 
 ### Mermaid図を使う場合（任意）
 
-原稿の中で ` ```mermaid ` フェンスを使う場合（または`.mmd`ファイルを`chapters`に直接指定する場合）のみ、追加で以下が必要です。
+原稿の中で ` ```mermaid ` フェンスを使う場合（または`.mmd`ファイルを`chapters`に直接指定する場合）のみ必要です。方法Aの場合は`mermaid`エクストラを追加でインストールします。
+
+```bash
+pipx install "context-compositor[mermaid]"
+# 既にインストール済みの場合: pipx inject context-compositor playwright==1.62.0
+```
+
+方法B（クローンして直接実行）の場合:
 
 ```bash
 pip install playwright==1.62.0
@@ -38,7 +63,7 @@ pip install playwright==1.62.0
 - **システムにインストール済みのGoogle ChromeまたはMicrosoft Edge**（既定では新規ダウンロードしない。ビルド時に自動検出して再利用する）
 - 上記の `playwright` パッケージ（既存ブラウザへCDP接続するために使うだけで、既定ではPlaywright自身のブラウザダウンロード機能は使わない）
 
-Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）を取得してヘッドレスブラウザに読み込ませ、SVGに変換します（バンドルJS自体は `tool_dir/.mermaid-cache/` に、変換結果は `.context-compositor/cache/` にキャッシュされ、次回以降は再取得しません）。Mermaidを使わない原稿ではこれらは一切不要です。
+Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バンドルJS（`mermaid.min.js`、約3.4MB）を取得してヘッドレスブラウザに読み込ませ、SVGに変換します（バンドルJS自体はOS標準のユーザーキャッシュディレクトリ、例えばWindowsなら`%LOCALAPPDATA%\context-compositor\Cache`、Linuxなら`~/.cache/context-compositor`にキャッシュし、変換結果は `.context-compositor/cache/` にキャッシュされ、次回以降は再取得しません）。Mermaidを使わない原稿ではこれらは一切不要です。
 
 システムにChrome/Edgeが無い場合は既定でエラー終了します。`plugins: { mermaid_auto_download: true }` にすると代わりにPlaywright自身のChromiumを自動取得しますが、**このダウンロードは約700MBあります**（プレインストールされたブラウザを使わない場合の最後の手段として用意した設定で、既定でこの量をダウンロードしてしまうことは意図的に避けています）。
 
@@ -47,12 +72,20 @@ Node.js/npmは不要です。ビルド時にMermaid公式配布の単一バン�
 原稿の中で ` ```plantuml ` フェンスを使う場合（または`.puml`ファイルを`chapters`に直接指定する場合）、`config.yaml`側の追加設定は不要です（`plugins.plantuml`は既定`true`。追加の`pip install`も不要）。
 
 - ローカルにJava（11以上）があればそのまま再利用します
-- 無ければ既定でEclipse Temurin JRE（Adoptium配布、約49.7MB）を自動取得・キャッシュします（`tool_dir/.jre-cache/`）。`plugins: { plantuml_auto_download: false }` にすると、自動取得せずエラー終了に変えられます
+- 無ければ既定でEclipse Temurin JRE（Adoptium配布、約49.7MB）を上記と同じユーザーキャッシュディレクトリへ自動取得・キャッシュします。`plugins: { plantuml_auto_download: false }` にすると、自動取得せずエラー終了に変えられます
 - GitHub Actionsの`ubuntu-latest`にはJavaが標準搭載されているため、CI上では追加ダウンロードは発生しません
 
-レイアウトエンジンには純Java実装の Smetana を使うため、Graphviz（`dot`）等の外部バイナリは不要です。PlantUML本体（MIT版、約17.6MB）は `tool_dir/.plantuml-cache/` に、変換結果はMermaidと同じく `.context-compositor/cache/` にキャッシュされます。
+レイアウトエンジンには純Java実装の Smetana を使うため、Graphviz（`dot`）等の外部バイナリは不要です。PlantUML本体（MIT版、約17.6MB）は同じユーザーキャッシュディレクトリに、変換結果はMermaidと同じく `.context-compositor/cache/` にキャッシュされます。
 
 ## 使い方
+
+`pip`/`pipx`でインストールした場合（方法A）:
+
+```bash
+context-compositor --config <path/to/context-compositor.config.yaml>
+```
+
+クローンして直接実行する場合（方法B）:
 
 ```bash
 python build.py --config <path/to/context-compositor.config.yaml>
@@ -64,6 +97,8 @@ python build.py --config <path/to/context-compositor.config.yaml>
 cd my-project/
 python /path/to/context-compositor/build.py
 ```
+
+`context-compositor --check-env`（または `python build.py --check-env`）を実行すると、ビルドを実行せずに環境（依存関係・Typstのバージョン・キャッシュ済みアセット・Mermaid/PlantUMLの前提条件）を確認できます。
 
 設定ファイルの書き方は [sample/context-compositor.config.yaml](sample/context-compositor.config.yaml) を、`document:`/`plugins:`/front-matter/Marpディレクティブ等の詳しい説明は[使い方ガイド](doc/usage/)を参照してください。`chapters` に列挙したMarkdownファイルを順に結合してPDFを生成します。
 

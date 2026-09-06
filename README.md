@@ -18,8 +18,26 @@ Files listed in `chapters` are handled differently depending on their extension.
 
 ## Requirements
 
-- Python 3
-- Dependencies ([requirements.txt](requirements.txt))
+- Python 3.10+
+
+There are two ways to install and run this tool.
+
+### Option A: `pip install` (recommended)
+
+```bash
+pipx install context-compositor
+```
+
+`pipx` installs the tool into an isolated environment and exposes the `context-compositor` command — recommended for most users. If you're developing this tool itself, use a `venv` instead so an editable install (`pip install -e .`) picks up code changes immediately:
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -e .        # Windows: .venv\Scripts\pip install -e .
+```
+
+> **Windows note:** Always install via `pipx` or a `venv`, never directly into a Microsoft Store-distributed Python. Store Python silently redirects writes under `%LOCALAPPDATA%` into its own sandboxed folder, which breaks subprocess-based features (PlantUML rendering) even though the files appear to exist. `pipx`/`venv` use a real, non-sandboxed Python executable and avoid this. Run `context-compositor --check-env` to check for this and other environment issues before building.
+
+### Option B: Clone and run directly (no installation)
 
 ```bash
 pip install -r requirements.txt
@@ -29,7 +47,14 @@ No Typst compiler binary is bundled; it's obtained from the `typst` package (PyP
 
 ### Using Mermaid diagrams (optional)
 
-This is only needed if your source documents use ` ```mermaid ` fences (or specify an `.mmd` file directly in `chapters`):
+This is only needed if your source documents use ` ```mermaid ` fences (or specify an `.mmd` file directly in `chapters`). With Option A, install the `mermaid` extra:
+
+```bash
+pipx install "context-compositor[mermaid]"
+# or, if already installed: pipx inject context-compositor playwright==1.62.0
+```
+
+With Option B (clone and run directly):
 
 ```bash
 pip install playwright==1.62.0
@@ -38,7 +63,7 @@ pip install playwright==1.62.0
 - **A Google Chrome or Microsoft Edge installation already present on your system** (no new download by default; it's auto-detected and reused at build time)
 - The `playwright` package above (used only to connect to the existing browser via CDP; Playwright's own browser-download feature is not used by default)
 
-Node.js/npm is not required. At build time, the official single-file Mermaid bundle (`mermaid.min.js`, ~3.4MB) is fetched and loaded into a headless browser to convert diagrams to SVG (the bundle JS itself is cached under `tool_dir/.mermaid-cache/`, and conversion results are cached under `.context-compositor/cache/`; neither is re-fetched afterward). None of this is needed for documents that don't use Mermaid.
+Node.js/npm is not required. At build time, the official single-file Mermaid bundle (`mermaid.min.js`, ~3.4MB) is fetched and loaded into a headless browser to convert diagrams to SVG (the bundle JS itself is cached under an OS-standard user cache directory — e.g. `%LOCALAPPDATA%\context-compositor\Cache` on Windows, `~/.cache/context-compositor` on Linux — and conversion results are cached under `.context-compositor/cache/`; neither is re-fetched afterward). None of this is needed for documents that don't use Mermaid.
 
 If no Chrome/Edge is found on the system, the build fails by default. Setting `plugins: { mermaid_auto_download: true }` instead auto-fetches Playwright's own Chromium, but **this download is about 700MB** (this setting exists as a last resort for when no pre-installed browser is available; downloading that much by default is intentionally avoided).
 
@@ -47,12 +72,20 @@ If no Chrome/Edge is found on the system, the build fails by default. Setting `p
 No extra `config.yaml` settings are needed to use ` ```plantuml ` fences in your source documents (or to specify a `.puml` file directly in `chapters`) — `plugins.plantuml` defaults to `true` and no additional `pip install` is required.
 
 - If Java (11+) is available locally, it's reused as-is
-- Otherwise, Eclipse Temurin JRE (Adoptium distribution, ~49.7MB) is auto-fetched and cached by default (`tool_dir/.jre-cache/`). Setting `plugins: { plantuml_auto_download: false }` disables the auto-fetch and fails the build instead
+- Otherwise, Eclipse Temurin JRE (Adoptium distribution, ~49.7MB) is auto-fetched and cached by default under the same user cache directory as above. Setting `plugins: { plantuml_auto_download: false }` disables the auto-fetch and fails the build instead
 - GitHub Actions' `ubuntu-latest` ships with Java by default, so no extra download happens on CI
 
-The layout engine is the pure-Java Smetana implementation, so no external binary like Graphviz (`dot`) is required. PlantUML itself (MIT edition, ~17.6MB) is cached under `tool_dir/.plantuml-cache/`, and conversion results are cached under `.context-compositor/cache/`, same as Mermaid.
+The layout engine is the pure-Java Smetana implementation, so no external binary like Graphviz (`dot`) is required. PlantUML itself (MIT edition, ~17.6MB) is cached under the same user cache directory, and conversion results are cached under `.context-compositor/cache/`, same as Mermaid.
 
 ## Usage
+
+If installed via `pip`/`pipx` (Option A):
+
+```bash
+context-compositor --config <path/to/context-compositor.config.yaml>
+```
+
+If cloned and run directly (Option B):
 
 ```bash
 python build.py --config <path/to/context-compositor.config.yaml>
@@ -64,6 +97,8 @@ If `--config` is omitted, `context-compositor.config.yaml` (or `.json`) located 
 cd my-project/
 python /path/to/context-compositor/build.py
 ```
+
+Run `context-compositor --check-env` (or `python build.py --check-env`) to check your environment (dependencies, Typst version, cached assets, Mermaid/PlantUML prerequisites) without running a build.
 
 See [sample/context-compositor.config.yaml](sample/context-compositor.config.yaml) for how to write the config file, and the [usage guide](doc/usage/) for details on `document:`/`plugins:`, front matter, Marp directives, and more. The Markdown files listed in `chapters` are concatenated in order to produce the PDF.
 
