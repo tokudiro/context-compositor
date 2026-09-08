@@ -1,7 +1,9 @@
 import os
 import re
 import sys
+import csv
 import json
+import io
 import bisect
 import subprocess
 import hashlib
@@ -497,8 +499,47 @@ class TypstRenderer:
             return self._render_mermaid(text)
         elif diagram_kind == 'plantuml':
             return self._render_plantuml(text)
+        elif ext == '.csv':
+            return self._render_csv_table(text)
 
         return self._render_raw_text(text, self.STRUCTURED_TEXT_LANGS.get(ext))
+
+    def _render_csv_table(self, text):
+        """.csvファイルをTypstの#table()へ変換する（#36）。区切り文字はカンマ固定（sniffingは
+        しない。このツールが一貫して採る「明示性優先・魔法をしない」方針に合わせる）。RFC 4180の
+        クォート処理（セル内カンマ・改行、""によるクォート文字自体のエスケープ）は標準ライブラリの
+        csvモジュールにそのまま委譲する。1行目をヘッダーとして扱い、既存のMarkdownテーブルと同じ
+        table_headerスタイル（bold/background/color）を適用する（10章のaggregateとは別の、任意の
+        表形式データ向けの汎用機能という位置づけ）。列数が不揃いな行は、他の描画失敗（mermaid等）と
+        同様にフォールバックせずFail-fastで即エラー終了する（9章の方針）。"""
+        # splitlines()で先に行分割すると、クォートされたセル内の改行（RFC 4180で許容される
+        # マルチライン値）まで失われる（csv.readerが行をまたいだクォートを復元する前に、
+        # 改行文字自体が消えてしまうため）。StringIOで生テキストのまま渡し、行分割自体を
+        # csv.readerに任せる。
+        rows = list(csv.reader(io.StringIO(text)))
+        if not rows:
+            print(f"[Error] {self.current_file} is an empty CSV file.")
+            sys.exit(1)
+
+        header, *body = rows
+        cols = len(header)
+        for row_no, row in enumerate(body, start=2):
+            if len(row) != cols:
+                print(f"[Error] {self.current_file}:{row_no}: expected {cols} columns (from the header row), "
+                      f"got {len(row)}.")
+                sys.exit(1)
+
+        open_wrap, close_wrap = self._table_header_open_close()
+        result = [f'#table(\n  columns: {cols}{self._table_header_fill_arg()},\n  ']
+        for cell in header:
+            result.append('[' + open_wrap + self.escape_typst(cell, at_line_start=True) + close_wrap + '], ')
+        result.append('\n  ')
+        for row in body:
+            for cell in row:
+                result.append('[' + self.escape_typst(cell, at_line_start=True) + '], ')
+            result.append('\n  ')
+        result.append('\n)\n\n')
+        return ''.join(result)
 
     def _render_raw_text(self, text, lang=None):
         """Markdown以外のテキスト（プレーンテキスト・コード・YAML/JSON等）を、markdown-itを一切

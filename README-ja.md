@@ -14,7 +14,7 @@
 - ツール本体とドキュメント（原稿）を分離し、原稿はリポジトリ外の任意の場所に置ける
 - Python中心・最小限のダウンロードで完結し、外部サーバーやSaaSに依存しない（GitHub Actions上でも、Windows/Linux/macOSのローカルでも同じ手順で動く）
 
-`chapters`に列挙するファイルは拡張子で扱いが分かれます。`.md`/`.markdown`はMarkdownとして変換し、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、`.dot`/`.gv`・`.mmd`・`.puml`/`.plantuml`/`.pu`はそれぞれGraphviz/Mermaid/PlantUMLの図として1章分描画し、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にします（CSVを表として構造化する変換は未実装）。詳細は[使い方ガイド](doc/usage/)を参照してください。
+`chapters`に列挙するファイルは拡張子で扱いが分かれます。`.md`/`.markdown`はMarkdownとして変換し、`.yaml`/`.yml`/`.json`はシンタックスハイライト付きの等幅表示、`.dot`/`.gv`・`.mmd`・`.puml`/`.plantuml`/`.pu`はそれぞれGraphviz/Mermaid/PlantUMLの図として1章分描画し、`.csv`はTypstのテーブルとして構造化して描画し、それ以外（プレーンテキスト・コードファイル等）は素の等幅表示にします。詳細は[使い方ガイド](doc/usage/)を参照してください。
 
 ## 必要なもの
 

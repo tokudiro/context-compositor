@@ -34,6 +34,7 @@ chapters:
   - "04_deployment.dot"    # 図表ソースファイルを直接chaptersに指定する例（#53）
   - "05_workflow.mmd"
   - "06_components.puml"
+  - "07_dependencies.csv"   # CSVファイルをTypstテーブルとして描画する例（#36）
   - aggregate: "testcases"
     title: "システムテスト仕様書 (マトリクス)"
     landscape: true   # テーブルは横長になりやすいのでA4横を指定
