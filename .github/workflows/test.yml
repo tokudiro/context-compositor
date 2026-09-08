@@ -1,0 +1,42 @@
+name: Test
+
+# テスト対象（text_compositor/・tests/・依存関係）を変更したpush/PRでのみpytestを実行する（#97）。
+# doc/やsample/等の無関係な変更ではCIを起動しない。
+#
+# push: masterブランチのみを対象にする。作業ブランチへの毎pushも対象にすると、PRを開いた
+# 時点で同じコミットにpull_requestイベントも発火し、同一コミットへの重複実行になるため。
+# masterへのpushは、PRを経ない直接コミット（バージョン番号変更等）に対する安全網として残す。
+#
+# pull_request: PRブランチへコミットが追加されるたびに実行し、マージ前にチェックする。
+on:
+  push:
+    branches: [master]
+    paths:
+      - "text_compositor/**"
+      - "build.py"
+      - "tests/**"
+      - "requirements*.txt"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "text_compositor/**"
+      - "build.py"
+      - "tests/**"
+      - "requirements*.txt"
+      - ".github/workflows/test.yml"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest tests/
