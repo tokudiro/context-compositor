@@ -18,6 +18,7 @@
 | `background` | 本文ページの背景画像（下記） | なし |
 | `table_header` | 通常のMarkdownテーブルのヘッダ行スタイル（下記） | 無装飾 |
 | `glossary` | `[[用語]]`による巻末用語索引を生成するか（「Markdownファイルの書き方」の章を参照） | `false` |
+| `marp_compat` | `---`/`***`/`___`をMarp互換で改ページとして扱うか（「Markdownファイルの書き方」の章を参照） | `false` |
 | `diagnostics.line_mapping` | Typstコンパイルエラーの行番号をMarkdownの行番号へ対応付ける精度（下記） | `"block"` |
 
 ## 用途別の設定早見表
