@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-.context-compositor/
+.text-compositor/
 .venv*/
 *.egg-info/
 /build/

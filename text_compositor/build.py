@@ -66,10 +66,10 @@ SYSTEM_BROWSER_COMMANDS = [
 def _user_cache_dir():
     """フォント/JRE/PlantUMLの取得物を置くアプリ専用のキャッシュディレクトリを返す。
     tool_dir（インストール場所）ではなくOS標準のユーザー領域（Windows:
-    %LOCALAPPDATA%\\context-compositor\\Cache、Linux: ~/.cache/context-compositor、
-    macOS: ~/Library/Caches/context-compositor）を使うことで、「クローンして直接叩く」
+    %LOCALAPPDATA%\\text-compositor\\Cache、Linux: ~/.cache/text-compositor、
+    macOS: ~/Library/Caches/text-compositor）を使うことで、「クローンして直接叩く」
     でも「pipインストール」でも同じ場所にキャッシュが置ける（#50、#110）。"""
-    return platformdirs.user_cache_dir("context-compositor", appauthor=False)
+    return platformdirs.user_cache_dir("text-compositor", appauthor=False)
 
 def find_system_browser():
     """既存のChrome/Edgeの実行ファイルパスを探す。見つからなければNone。"""
@@ -159,7 +159,7 @@ def _check_isolated_env():
                         "not running inside an isolated environment (venv/pipx). On Windows with "
                         "Microsoft Store Python this can cause subprocess-based features (PlantUML, "
                         "etc.) to fail even though files appear to exist. Recommended: "
-                        "`pipx install context-compositor` (end users) or a venv + "
+                        "`pipx install text-compositor` (end users) or a venv + "
                         "`pip install -e .` (developers)")
 
 def _check_pyyaml(config_path):
@@ -1039,7 +1039,7 @@ class TypstRenderer:
 
     def _resolve_asset(self, src):
         """画像の相対パスをMarkdownファイル基準から、typst_root起点のルート絶対パスへ変換する。
-        temp_build.typ の実際の置き場所（.context-compositor/ 配下）に依存させないため。"""
+        temp_build.typ の実際の置き場所（.text-compositor/ 配下）に依存させないため。"""
         if not src or src.startswith('/') or re.match(r'^[a-zA-Z][a-zA-Z0-9+.\-]*://', src):
             return escape_string_literal(src)
         abs_path = os.path.normpath(os.path.join(self.current_dir, src))
@@ -1152,7 +1152,7 @@ class TypstRenderer:
         """```svgフェンスの内容をTypstのimage呼び出しに変換する。mermaid/plantumlと異なりSVGは
         既にテキストで完結したベクター画像フォーマットのため、外部レンダリングエンジンは呼ばず、
         コードをそのままキャッシュ用の.svgファイルへ書き出すだけでよい（#91）。"""
-        cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
+        cache_dir = os.path.join(self.base_dir, ".text-compositor", "cache")
         os.makedirs(cache_dir, exist_ok=True)
         digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
         svg_path = os.path.join(cache_dir, f"svg_{digest}.svg")
@@ -1173,7 +1173,7 @@ class TypstRenderer:
                 self._mermaid_disabled_warned = True
             return f"```mermaid\n{code}```\n\n"
 
-        cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
+        cache_dir = os.path.join(self.base_dir, ".text-compositor", "cache")
         os.makedirs(cache_dir, exist_ok=True)
         digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
         svg_path = os.path.join(cache_dir, f"mermaid_{digest}.svg")
@@ -1235,7 +1235,7 @@ class TypstRenderer:
                 self._plantuml_disabled_warned = True
             return f"```plantuml\n{code}```\n\n"
 
-        cache_dir = os.path.join(self.base_dir, ".context-compositor", "cache")
+        cache_dir = os.path.join(self.base_dir, ".text-compositor", "cache")
         os.makedirs(cache_dir, exist_ok=True)
         digest = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16]
         svg_path = os.path.join(cache_dir, f"plantuml_{digest}.svg")
@@ -1861,7 +1861,7 @@ def extract_md_string(data, key):
 
 def find_config_in_cwd():
     """--config省略時、カレントディレクトリ直下の推奨ファイル名を探す（ツール本体ディレクトリは見ない）。"""
-    for name in ("context-compositor.config.yaml", "context-compositor.config.json"):
+    for name in ("text-compositor.config.yaml", "text-compositor.config.json"):
         path = os.path.join(os.getcwd(), name)
         if os.path.exists(path):
             return path
@@ -1869,7 +1869,7 @@ def find_config_in_cwd():
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Markdown -> Typst -> PDF ドキュメントビルダー")
-    parser.add_argument("--config", help="設定ファイル(yaml/json)へのパス。省略時はカレントディレクトリの context-compositor.config.yaml/.json を探す。")
+    parser.add_argument("--config", help="設定ファイル(yaml/json)へのパス。省略時はカレントディレクトリの text-compositor.config.yaml/.json を探す。")
     parser.add_argument("--config-list", help="ビルド対象のconfigファイルパスを1行1件で列挙したテキストファイル。空行と'#'で始まる行は無視される。--configとは同時指定できない。相対パスはこのファイル自身の置き場所が基準。")
     parser.add_argument("--check-env", action="store_true",
                          help="ビルドを実行せず、実行環境の前提（依存パッケージ・Typstバージョン・"
@@ -1902,7 +1902,7 @@ def _load_project_config(config_path):
     else:
         config_path = find_config_in_cwd()
         if not config_path:
-            print("[Error] --config not specified, and no context-compositor.config.yaml/.json found in the current directory.")
+            print("[Error] --config not specified, and no text-compositor.config.yaml/.json found in the current directory.")
             sys.exit(1)
     project_dir = os.path.dirname(config_path)
     config = load_config_file(config_path)
@@ -1921,7 +1921,7 @@ def _resolve_project_dirs(project_dir, config):
     # 【修正】ハードコードをやめ config の inputs.dir を実際に使用する
     inputs_dir = os.path.normpath(os.path.join(project_dir, config.get("inputs", {}).get("dir") or "inputs"))
 
-    work_dir = os.path.join(project_dir, ".context-compositor")
+    work_dir = os.path.join(project_dir, ".text-compositor")
     os.makedirs(work_dir, exist_ok=True)
 
     # project_dir・inputs_dir・outputs_dir・work_dirすべてを跨いでtypstから参照できるよう、
@@ -1941,7 +1941,7 @@ def _prepare_template(config, tool_dir, project_dir, work_dir, typst_root):
     shutil.copyfile(template_abs_path, template_copy_path)
 
     # 生成コード(temp_build.typ)の実際の置き場所に依存させないよう、typst_root起点の
-    # ルート絶対パスに変換する（.context-compositor/等サブディレクトリに置いても解決できる）。
+    # ルート絶対パスに変換する（.text-compositor/等サブディレクトリに置いても解決できる）。
     template_root_rel_path = "/" + os.path.relpath(template_copy_path, typst_root).replace(os.sep, '/')
     return template_copy_path, template_root_rel_path
 
@@ -2266,7 +2266,7 @@ def _compile_and_cleanup(typst_code, work_dir, outputs_dir, config, typst_root, 
 
 def build():
     # tool_dir: ツール自身に同梱されたリソース（templates/）の場所。パッケージ化後は
-    # context_compositor/ パッケージのディレクトリを指す（#111）。
+    # text_compositor/ パッケージのディレクトリを指す（#111）。
     tool_dir = os.path.dirname(os.path.abspath(__file__))
     # repo_root: 「クローンして直接叩く」場合のリポジトリルート。requirements.txt探索にのみ使う。
     # pipインストール後はrequirements.txtが同梱されないため、自然に「見つからない」扱いになる。

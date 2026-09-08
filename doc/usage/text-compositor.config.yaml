@@ -1,5 +1,5 @@
 document:
-  title: "context-compositor 使い方ガイド"
+  title: "text-compositor 使い方ガイド"
   subtitle: ""
   author: ""
   date: "auto"
@@ -9,7 +9,7 @@ document:
   toc: true
 
 output:
-  filename: "context-compositor-usage-guide.pdf"
+  filename: "text-compositor-usage-guide.pdf"
   dir: "."
 
 template:

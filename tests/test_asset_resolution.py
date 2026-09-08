@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-import context_compositor.build as build
+import text_compositor.build as build
 
 
 class TestResolveAsset:

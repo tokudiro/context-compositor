@@ -4,7 +4,7 @@
 import os
 import pytest
 
-import context_compositor.build as build
+import text_compositor.build as build
 
 
 def render(md_text, **kw):

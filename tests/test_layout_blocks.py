@@ -4,7 +4,7 @@
 TestFenceProtectionRegressionは、レイアウトブロック内に実際の図表フェンスを置くと常に
 検出失敗していた不具合（#127）の再現・修正確認を兼ねる。
 """
-import context_compositor.build as build
+import text_compositor.build as build
 
 
 def render(md_text):

@@ -31,7 +31,7 @@ template:
 
 # 複数PDFをまとめて出力する
 
-`context-compositor` は「1 `config.yaml` = 1 PDF」が基本の単位です。複数のPDFが必要な場合は、`--config-list` にconfigファイルのパスを1行1件で列挙したテキストファイルを渡します。
+`text-compositor` は「1 `config.yaml` = 1 PDF」が基本の単位です。複数のPDFが必要な場合は、`--config-list` にconfigファイルのパスを1行1件で列挙したテキストファイルを渡します。
 
 ```
 # configs.txt
@@ -45,7 +45,7 @@ docs/manual_inspection.config.yaml
 python build.py --config-list configs.txt
 ```
 
-pipインストール方式（導入手順は`README.md`参照）の場合は、`context-compositor --config-list configs.txt`と読み替えてください。
+pipインストール方式（導入手順は`README.md`参照）の場合は、`text-compositor --config-list configs.txt`と読み替えてください。
 
 各行の相対パスは、`configs.txt` 自身の置き場所が基準になります（他の設定ファイルの相対パス基準と同じルール）。`--config` と `--config-list` は同時に指定できません。
 

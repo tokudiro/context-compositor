@@ -15,7 +15,7 @@
 
 `.md`/`.markdown` 以外はMarkdownとして解釈されないため、YAML内の `-` やコード内の `#` が見出しやリストに化けることはありません。
 
-図表ソースファイル（`.dot`/`.mmd`/`.puml`等）は、Markdown内の```` ```mermaid ````等のフェンスコードブロックと全く同じ描画機構を使います。1ファイル＝1章（見出しなし、図だけのページ）として扱われ、該当する`plugins.*`が無効な場合は素のコード表示にフォールバックします（[#53](https://github.com/tokudiro/context-compositor/issues/53)）。「図表（Mermaid / Graphviz / PlantUML）」の章も参照してください。
+図表ソースファイル（`.dot`/`.mmd`/`.puml`等）は、Markdown内の```` ```mermaid ````等のフェンスコードブロックと全く同じ描画機構を使います。1ファイル＝1章（見出しなし、図だけのページ）として扱われ、該当する`plugins.*`が無効な場合は素のコード表示にフォールバックします（[#53](https://github.com/tokudiro/text-compositor/issues/53)）。「図表（Mermaid / Graphviz / PlantUML）」の章も参照してください。
 
 ## 対応するMarkdown記法のスコープ
 
@@ -114,16 +114,16 @@ GitHub形式のalert記法（`> [!NOTE]`等）で、本文と区別した囲み�
 | --- | --- |
 | `width=...` | 画像の幅（TypstのサイズまたはCJK単位でも可、例: `50%`、`8cm`） |
 | `height=...` | 画像の高さ（同上） |
-| `align=left` / `align=center` / `align=right` | 画像の左寄せ・中央寄せ・右寄せ（[#75](https://github.com/tokudiro/context-compositor/issues/75)） |
+| `align=left` / `align=center` / `align=right` | 画像の左寄せ・中央寄せ・右寄せ（[#75](https://github.com/tokudiro/text-compositor/issues/75)） |
 
-- `width`/`height`をどちらも指定しない場合、画像は実寸（96dpi換算）で配置され、段幅または高さ12cmを超える場合だけ自動縮小されます（拡大はしません、[#69](https://github.com/tokudiro/context-compositor/issues/69)）。段幅いっぱいに引き伸ばしたい場合は`width=100%`を明示してください。
+- `width`/`height`をどちらも指定しない場合、画像は実寸（96dpi換算）で配置され、段幅または高さ12cmを超える場合だけ自動縮小されます（拡大はしません、[#69](https://github.com/tokudiro/text-compositor/issues/69)）。段幅いっぱいに引き伸ばしたい場合は`width=100%`を明示してください。
 - `align`を指定しない場合の見た目は変わらず、これまでどおり左寄せです。
 - `width`/`height`と`align`は組み合わせて指定できます（順不同）。
 - Mermaid/PlantUML/Graphvizのフェンス（「図表（Mermaid / Graphviz / PlantUML）」の章）には`align`は無く、常に中央寄せです。
 
 ## 水平線・改ページ
 
-`---`/`***`/`___`（本文中の水平線）と改ページの扱いは、`document.marp_compat`（既定`false`）で切り替わります（[#92](https://github.com/tokudiro/context-compositor/issues/92)）。
+`---`/`***`/`___`（本文中の水平線）と改ページの扱いは、`document.marp_compat`（既定`false`）で切り替わります（[#92](https://github.com/tokudiro/text-compositor/issues/92)）。
 
 ```markdown
 段落1です。
@@ -160,7 +160,7 @@ landscape: true
 | --- | --- | --- |
 | `font_size` | そのファイル全体 | front-matterのみ |
 | `paper_size` / `landscape` | そのファイル全体 | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定 |
-| `header` / `footer` / `paginate` | そのファイル全体（他の章には持続しない） | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定（[#42](https://github.com/tokudiro/context-compositor/issues/42)） |
+| `header` / `footer` / `paginate` | そのファイル全体（他の章には持続しない） | `chapters` の `file:` 指定 ＞ front-matter ＞ `document:` のグローバル設定（[#42](https://github.com/tokudiro/text-compositor/issues/42)） |
 | `title` / `subtitle` / `author` / `date` | 認識はするが反映しない（読み捨てる） | — |
 
 `title`/`subtitle`/`author`/`date`は、Marp原稿との共用時にエラーや警告が出ないよう認識だけしていますが、実際には何も反映されません。文書全体のタイトル等は `document:` の設定（「document: 文書全体の設定」の章）で指定してください。

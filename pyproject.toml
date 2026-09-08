@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "context-compositor"
+name = "text-compositor"
 version = "0.1.0"
 description = "A tool for composing multiple text files into a PDF document."
 readme = "README.md"
@@ -18,21 +18,21 @@ dependencies = [
 ]
 
 # plugins.mermaid: true（既定）を使う場合のみ必要（11章）。
-# `pip install context-compositor[mermaid]` でまとめて導入できる。
+# `pip install text-compositor[mermaid]` でまとめて導入できる。
 [project.optional-dependencies]
 mermaid = ["playwright==1.62.0"]
 
 [project.urls]
-Repository = "https://github.com/tokudiro/context-compositor"
+Repository = "https://github.com/tokudiro/text-compositor"
 
-# `context-compositor --config ...` コマンドを提供する（#111）。
+# `text-compositor --config ...` コマンドを提供する（#111）。
 # 「クローンして直接叩く」既存の使い方（`python build.py --config ...`）も
 # トップレベルの build.py ラッパー経由で引き続き使える。
 [project.scripts]
-context-compositor = "context_compositor.build:build"
+text-compositor = "text_compositor.build:build"
 
 [tool.setuptools]
-packages = ["context_compositor"]
+packages = ["text_compositor"]
 
 [tool.setuptools.package-data]
-context_compositor = ["templates/*.typ"]
+text_compositor = ["templates/*.typ"]
