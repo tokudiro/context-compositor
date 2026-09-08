@@ -1,0 +1,11 @@
+id: FM-02
+title: "landscapeの優先順位（tests/test_front_matter.py::TestLandscapePriority）"
+priority: High
+steps: |
+  - `_render_markdown_chapter()`を、(1)何も指定しない、(2)front-matterで`landscape: true`、(3)front-matterと`chapters[]`の両方で異なる値、の3パターンで呼び出す。
+  - あわせて、解決結果が現在値から変化した場合/しない場合それぞれで、`#set page(...)`が出力されるかを確認する。
+expected: |
+  - 何も指定しなければグローバル設定の値が使われること
+  - front-matterの指定はグローバル設定より優先されること
+  - `chapters[]`の明示指定は、front-matterよりさらに優先されること（chapters[] > front-matter > グローバル）
+  - 値が変化した章でだけ`#set page(...)`が出力され、変化しなければ出力されないこと

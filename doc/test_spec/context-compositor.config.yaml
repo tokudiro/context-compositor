@@ -1,0 +1,29 @@
+document:
+  title: "context-compositor テスト仕様書"
+  subtitle: ""
+  author: ""
+  date: "auto"
+  paper_size: "a4"
+  landscape: false
+  cover: "template"
+  toc: true
+
+output:
+  filename: "context-compositor-test-spec.pdf"
+  dir: "."
+
+template:
+  path: "template"
+
+plugins:
+  graphviz: false
+  mermaid: false
+
+inputs:
+  dir: "."
+
+chapters:
+  - "intro.md"
+  - aggregate: "testcases"
+    title: "テストケース一覧"
+    landscape: true

@@ -1,0 +1,8 @@
+id: MD-07
+title: "巻末用語索引（glossary）の登録（tests/test_markdown_basics.py::TestGlossary）"
+priority: Medium
+steps: |
+  - `[[用語]]`記法を含むMarkdownを、`glossary_enabled=True`/`False`それぞれの`TypstRenderer`で`render()`する。
+expected: |
+  - 有効時は、用語の直後に不可視ラベル`#metadata(none)<gloss-N>`が埋め込まれ、`renderer.glossary_terms`に用語とラベルIDが登録されること
+  - 無効時は`[[用語]]`をエスケープされた素のテキストとしてそのまま出力すること

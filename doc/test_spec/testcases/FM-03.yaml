@@ -1,0 +1,10 @@
+id: FM-03
+title: "header/footer/paginateの優先順位（tests/test_front_matter.py::TestHeaderFooterPaginatePriority）"
+priority: High
+steps: |
+  - `_render_markdown_chapter()`を、front-matterで`header`を指定した場合、`chapters[]`でも`header`を指定した場合、`chapters[]`で`header: null`を明示した場合、front-matterで`footer`/`paginate`を指定した場合、それぞれで呼び出す。
+expected: |
+  - front-matterの`header`指定はグローバル設定より優先されること
+  - `chapters[]`の`header`指定は、front-matterよりさらに優先されること
+  - `chapters[]`で明示的に`header: null`を指定した場合は、front-matter/グローバルの値にフォールバックせず、ヘッダー自体が非表示になること
+  - `footer`/`paginate`もheaderと同じ優先順位で解決されること

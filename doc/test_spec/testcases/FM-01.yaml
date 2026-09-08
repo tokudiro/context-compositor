@@ -1,0 +1,11 @@
+id: FM-01
+title: "front-matterの解析（tests/test_front_matter.py::TestStripFrontMatter）"
+priority: High
+steps: |
+  - YAML front-matterあり/なしのMarkdown、不正な`font_size`値を持つfront-matter、未知のキーを持つfront-matterを`strip_front_matter()`に渡す。
+expected: |
+  - front-matterのYAMLが辞書として正しく解析され、本文から除去されること
+  - front-matterが無い場合は空の設定を返すこと
+  - 除去した行数ぶんの改行を残し、以降の行番号がずれないこと
+  - 不正な`font_size`値（`"16pt"`形式でない）は`[Warning]`を出したうえで無視されること
+  - 未知のキーは`[Warning]`を出すが、値自体は保持されること

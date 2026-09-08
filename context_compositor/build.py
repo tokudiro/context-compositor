@@ -342,7 +342,14 @@ class TypstRenderer:
 
     @staticmethod
     def _in_ranges(offset, ranges):
-        return any(start <= offset < end for start, end in ranges)
+        # 厳密な不等号(start <)にしているのは、探している対象そのもの（layout-right等の中に
+        # 実際に置かれた図表フェンス自身）と、外側フェンスに包まれた説明用サンプルの中に
+        # ネストして現れる同じ見た目の文字列とを区別するため（#127）。ネストした場合、実際の
+        # マッチ開始位置は必ず外側フェンス（保護区間）の開始位置より後ろに来る。一方、探している
+        # 対象自身が最上位のfenceトークンである場合、マッチ開始位置は保護区間の開始位置と
+        # 完全に一致する。start<=だと後者まで誤って除外してしまい、layout-right等の中に本物の
+        # 図表フェンスを置くという主目的そのものが常に失敗していた。
+        return any(start < offset < end for start, end in ranges)
 
     def _finditer_outside_fences(self, regex, text):
         """regex.finditer(text)のうち、_fenced_char_rangesで求めた保護区間（外側フェンスの中）に

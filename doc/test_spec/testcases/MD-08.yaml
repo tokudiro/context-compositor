@@ -1,0 +1,9 @@
+id: MD-08
+title: "Markdown画像の変換（tests/test_markdown_basics.py::TestImages）"
+priority: High
+steps: |
+  - `![alt](path)`の基本形と、`![alt|width=...|align=...]`のサイズ・配置指定付き画像、存在しない画像パスを`render()`に渡す。
+expected: |
+  - 基本形は`#image("/ルート絶対パス")`に変換されること
+  - サイズ・配置指定は、それぞれ`width:`引数と`#align(...)[...]`のラップに反映されること
+  - 画像ファイルが見つからない場合は、フォールバックせず`sys.exit(1)`で即座に終了すること（Fail-fast）

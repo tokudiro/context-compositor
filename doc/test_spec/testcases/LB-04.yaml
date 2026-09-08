@@ -1,0 +1,8 @@
+id: LB-04
+title: "layout-featureの基本動作（tests/test_layout_blocks.py::TestLayoutFeature）"
+priority: Medium
+steps: |
+  - キャッチコピーとなるテキストと、図表フェンスを含む`::: layout-feature ... :::`ブロックを`render()`に渡す。
+expected: |
+  - 図/画像がフルブリードの`#box(...)`で敷かれ、キャッチコピーが下部に重ねて配置されること
+  - 枠の高さが固定値（`FEATURE_IMG_HEIGHT`、70%）で出力されること

@@ -1,0 +1,10 @@
+id: CFG-02
+title: "既定設定値の構造（tests/test_config.py::TestDefaultConfig）"
+priority: Medium
+steps: |
+  - `default_config()`を複数回呼び出し、返された辞書の構造と、呼び出しごとの独立性（一方を書き換えても他方に影響しないこと）を確認する。
+expected: |
+  - トップレベルのキーが`document`/`output`/`template`/`inputs`の4つであること
+  - `document.diagnostics.line_mapping`の既定値が`"block"`であること
+  - `template.path`の既定値が`"template"`であること
+  - 呼び出しのたびに独立した新しい辞書が返され、共有可変状態によるバグが起きないこと

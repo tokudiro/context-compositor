@@ -1,0 +1,7 @@
+id: MD-03
+title: "テーブルの変換（tests/test_markdown_basics.py::TestTable）"
+priority: High
+steps: |
+  - `| a | b |`形式のGFMテーブル（ヘッダ行+データ行）を`render()`に渡す。
+expected: |
+  - Typstの`#table(...)`構文に変換され、列数・各セルの内容が正しく反映されること

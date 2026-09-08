@@ -1,0 +1,8 @@
+id: LB-06
+title: "layout-takahashiの基本動作（tests/test_layout_blocks.py::TestLayoutTakahashi）"
+priority: Low
+steps: |
+  - サイズ省略時と、`{size=50pt}`のように文字サイズを明示した`::: layout-takahashi ... :::`ブロックを`render()`に渡す。
+expected: |
+  - 省略時は既定サイズ（`TAKAHASHI_DEFAULT_SIZE`、96pt）で中央に大きく表示されること
+  - サイズを明示した場合はその値が反映されること
