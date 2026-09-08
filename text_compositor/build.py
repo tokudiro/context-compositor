@@ -465,7 +465,7 @@ class TypstRenderer:
         self.line_mapping = line_mapping
 
     # 拡張子ごとの構造化データ言語（Typstのraw()に渡すシンタックスハイライト名）。
-    # コンテキストとなるテキストファイルはMarkdownに限らない（1章、#15）。
+    # 入力となるテキストファイルはMarkdownに限らない（1章、#15）。
     STRUCTURED_TEXT_LANGS = {'.yaml': 'yaml', '.yml': 'yaml', '.json': 'json'}
 
     # 図表ソースファイルそのものをchaptersに直接指定できる拡張子（#53）。Markdown内の
