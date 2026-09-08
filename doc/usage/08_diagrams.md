@@ -68,7 +68,7 @@ MermaidはChrome/Edge、PlantUMLはJava（11以上）が必要です。システ
 
 - `@startuml` / `@enduml` を省略せず、実際のPlantUML構文どおりに書いてください（自動補完はしません）。
 - レイアウトエンジンには純Java実装の Smetana を使うため、`dot`（Graphviz）等の外部バイナリは不要です。
-- `plantuml.jar`（MIT版）は初回ビルド時のみ取得し、OS標準のユーザーキャッシュ領域（Windows: `%LOCALAPPDATA%\context-compositor\Cache`、Linux: `~/.cache/context-compositor`、macOS: `~/Library/Caches/context-compositor`）にキャッシュします。Eclipse Temurin JREを自動取得した場合も同じ領域にキャッシュします。
+- `plantuml.jar`（MIT版）は初回ビルド時のみ取得し、OS標準のユーザーキャッシュ領域（Windows: `%LOCALAPPDATA%\text-compositor\Cache`、Linux: `~/.cache/text-compositor`、macOS: `~/Library/Caches/text-compositor`）にキャッシュします。Eclipse Temurin JREを自動取得した場合も同じ領域にキャッシュします。
 
 ````markdown
 ::: layout-right
@@ -196,4 +196,4 @@ graph TD
 
 - `{align=center}`/`{align=right}`のいずれかを指定します。`{align=left}`も明示できますが、既定と同じ見た目です。
 - `{align=...}`を省略した場合の見た目は、既定（左寄せ）から変わりません。
-- Markdown画像側の`![alt|align=center](path)`のような属性（画像1枚だけの配置指定、[#75](https://github.com/tokudiro/context-compositor/issues/75)）とは別の記法です。画像1枚だけを中央寄せ・右寄せにしたい場合は画像側の`align`属性を、段落（テキスト）をまとめて寄せたい場合はこの`::: align`ブロックを使います。
+- Markdown画像側の`![alt|align=center](path)`のような属性（画像1枚だけの配置指定、[#75](https://github.com/tokudiro/text-compositor/issues/75)）とは別の記法です。画像1枚だけを中央寄せ・右寄せにしたい場合は画像側の`align`属性を、段落（テキスト）をまとめて寄せたい場合はこの`::: align`ブロックを使います。

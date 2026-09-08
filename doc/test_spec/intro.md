@@ -2,9 +2,9 @@
 
 本書は、`tests/`配下にあるリグレッションテストの仕様書である。何を、どの範囲まで、どのような方針でテストしているかを記録する。テスト対象となるコードの詳細な設計・実装意図は`doc/spec.md`を参照する。
 
-これまで本プロジェクトには自動テストが一切なかった。行番号マッピング機能（[#27](https://github.com/tokudiro/context-compositor/issues/27)）の実装で、初めて`tests/`・pytest・`requirements-dev.txt`という土台を作った。その後、主要機能全体へテストを広げる作業（[#96](https://github.com/tokudiro/context-compositor/issues/96)）を行い、本書もそのときに作成した。
+これまで本プロジェクトには自動テストが一切なかった。行番号マッピング機能（[#27](https://github.com/tokudiro/text-compositor/issues/27)）の実装で、初めて`tests/`・pytest・`requirements-dev.txt`という土台を作った。その後、主要機能全体へテストを広げる作業（[#96](https://github.com/tokudiro/text-compositor/issues/96)）を行い、本書もそのときに作成した。
 
-実装時の想定と実機での挙動がずれることは珍しくない。実際、#27の実装では実機で動かして初めて気づいたバグが2件あった。#96の作業でも、テストを書く過程で新たなバグを1件見つけた（layout-right等のレイアウトブロック内で実際の図表フェンスが常に検出失敗する不具合、[#127](https://github.com/tokudiro/context-compositor/issues/127)）。次章のテストケース一覧は、こうしたズレを機械的に検知するためのものである。
+実装時の想定と実機での挙動がずれることは珍しくない。実際、#27の実装では実機で動かして初めて気づいたバグが2件あった。#96の作業でも、テストを書く過程で新たなバグを1件見つけた（layout-right等のレイアウトブロック内で実際の図表フェンスが常に検出失敗する不具合、[#127](https://github.com/tokudiro/text-compositor/issues/127)）。次章のテストケース一覧は、こうしたズレを機械的に検知するためのものである。
 
 # 実行方法
 

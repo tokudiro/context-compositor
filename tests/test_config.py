@@ -1,7 +1,7 @@
 """config.yamlの読み込み・デフォルト値マージ・chaptersエントリ解析のリグレッションテスト（#96）。"""
 import pytest
 
-import context_compositor.build as build
+import text_compositor.build as build
 
 
 class TestDeepUpdate:

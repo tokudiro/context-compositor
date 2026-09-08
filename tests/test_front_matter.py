@@ -3,7 +3,7 @@ font_sizeの優先順位（chapters[] > front-matter > グローバル、#17・#
 """
 import os
 
-import context_compositor.build as build
+import text_compositor.build as build
 
 
 class TestStripFrontMatter:

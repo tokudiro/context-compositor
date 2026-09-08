@@ -58,7 +58,7 @@ document:
   paginate: true             # falseにするとページ番号を出さない
 ```
 
-`chapters`側で章ごとに上書きできます（`landscape`/`paper_size`と同じ優先順位パターン。「chapters: 章の並び」の章を参照）。フッターにカスタム文字列とページ番号を両方指定した場合は、左にフッター文字列・右にページ番号が並びます。この設定はMarpの`header`/`footer`/`paginate`ディレクティブとは無関係です（[#42](https://github.com/tokudiro/context-compositor/issues/42)。ディレクティブは「Markdownの書き方」の章を参照）。
+`chapters`側で章ごとに上書きできます（`landscape`/`paper_size`と同じ優先順位パターン。「chapters: 章の並び」の章を参照）。フッターにカスタム文字列とページ番号を両方指定した場合は、左にフッター文字列・右にページ番号が並びます。この設定はMarpの`header`/`footer`/`paginate`ディレクティブとは無関係です（[#42](https://github.com/tokudiro/text-compositor/issues/42)。ディレクティブは「Markdownの書き方」の章を参照）。
 
 ## logo: ヘッダーのロゴ画像
 
@@ -120,7 +120,7 @@ document:
 
 ## diagnostics.line_mapping: エラー行のMarkdownへの対応付け
 
-Typstのコンパイルに失敗すると、既定では`temp_build.typ:42:3`のようにビルド用の中間ファイル（生成されたTypstコード）の行番号でエラーが表示され、元のMarkdownの何行目が原因か分かりにくい問題があります。この設定で、失敗時のメッセージに元のMarkdownファイル・行番号のヒントを追加できます（[#27](https://github.com/tokudiro/context-compositor/issues/27)）。
+Typstのコンパイルに失敗すると、既定では`temp_build.typ:42:3`のようにビルド用の中間ファイル（生成されたTypstコード）の行番号でエラーが表示され、元のMarkdownの何行目が原因か分かりにくい問題があります。この設定で、失敗時のメッセージに元のMarkdownファイル・行番号のヒントを追加できます（[#27](https://github.com/tokudiro/text-compositor/issues/27)）。
 
 ```yaml
 document:

@@ -1,5 +1,5 @@
 document:
-  title: "context-compositor テスト仕様書"
+  title: "text-compositor テスト仕様書"
   subtitle: ""
   author: ""
   date: "auto"
@@ -9,7 +9,7 @@ document:
   toc: true
 
 output:
-  filename: "context-compositor-test-spec.pdf"
+  filename: "text-compositor-test-spec.pdf"
   dir: "."
 
 template:

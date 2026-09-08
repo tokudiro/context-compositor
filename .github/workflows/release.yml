@@ -2,7 +2,7 @@ name: Release
 
 # バージョンタグ（v*）をpushすると、使い方ガイド（doc/usage/）をこのツール自身でPDF化し、
 # そのタグのGitHub Releaseにアセットとして添付する（dogfooding、#31・#24）。
-# doc/usage/context-compositor.config.yaml は graphviz/mermaid とも無効なため、
+# doc/usage/text-compositor.config.yaml は graphviz/mermaid とも無効なため、
 # Node.js/JRE等の追加ランタイムは不要でPython + pipのみで完結する（2章）。
 #
 # doc/usage/12_github_actions.mdで案内している2つの使い方（クローンして直接叩く／
@@ -18,9 +18,9 @@ permissions:
 
 jobs:
   # 「クローンして直接叩く」使い方（#24で実証済み）。こちらの成果物を実際にリリースへ
-  # 添付する。ツール（context-compositor）とドキュメント（doc/usage/）を、あえて同一
+  # 添付する。ツール（text-compositor）とドキュメント（doc/usage/）を、あえて同一
   # コミットでも2回に分けてチェックアウトし、「別リポジトリとして使う」通常構成と
-  # 全く同じ手順を踏む。context-compositor側はrepository:を指定するだけでdefault
+  # 全く同じ手順を踏む。text-compositor側はrepository:を指定するだけでdefault
   # ブランチ(master)を取得する（実際の外部利用でtagを固定しないのと同じ状況を再現し、
   # 最新のbuild.pyが既存のconfig.yamlと噛み合うかも同時に確認できる）。
   build-usage-guide:
@@ -31,26 +31,26 @@ jobs:
         with:
           path: this-repo
 
-      - name: Checkout context-compositor (tool)
+      - name: Checkout text-compositor (tool)
         uses: actions/checkout@v4
         with:
-          repository: tokudiro/context-compositor
-          path: context-compositor
+          repository: tokudiro/text-compositor
+          path: text-compositor
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
       - name: Install dependencies
-        run: pip install -r context-compositor/requirements.txt
+        run: pip install -r text-compositor/requirements.txt
 
       - name: Build usage guide PDF
-        run: python context-compositor/build.py --config this-repo/doc/usage/context-compositor.config.yaml
+        run: python text-compositor/build.py --config this-repo/doc/usage/text-compositor.config.yaml
 
       - name: Attach PDF to release
         uses: softprops/action-gh-release@v2
         with:
-          files: this-repo/doc/usage/context-compositor-usage-guide.pdf
+          files: this-repo/doc/usage/text-compositor-usage-guide.pdf
           # 本文を自動生成する（マージ済みPRの一覧。v0.0.13までは本文が空のまま公開されて
           # いたため追加した）。カテゴリ分けした詳細なノートにしたい場合は、公開後に
           # `gh release edit`で上書きする運用のままでよい（自動生成はたたき台として機能する）。
@@ -71,8 +71,8 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install context-compositor via pip
-        run: pip install "git+https://github.com/tokudiro/context-compositor.git@master"
+      - name: Install text-compositor via pip
+        run: pip install "git+https://github.com/tokudiro/text-compositor.git@master"
 
-      - name: Build usage guide PDF via the context-compositor command
-        run: context-compositor --config this-repo/doc/usage/context-compositor.config.yaml
+      - name: Build usage guide PDF via the text-compositor command
+        run: text-compositor --config this-repo/doc/usage/text-compositor.config.yaml
