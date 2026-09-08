@@ -124,11 +124,13 @@ class TestGlossary:
 
 
 class TestImages:
-    def test_basic_image(self, tmp_path):
+    def test_basic_image_uses_fit_image_for_natural_sizing(self, tmp_path):
+        """#69: width/height未指定時は#image()に段幅いっぱいへ引き伸ばされず、fit-image()で
+        実寸基準（はみ出す場合のみ自動縮小）になること。"""
         (tmp_path / "a.png").write_bytes(b"\x89PNG")
         renderer = build.TypstRenderer(line_mapping="off", base_dir=str(tmp_path), typst_root=str(tmp_path))
         out = renderer.render("![alt](a.png)\n", filepath=str(tmp_path / "doc.md"))
-        assert out == '#image("/a.png")\n\n'
+        assert out == '#fit-image("/a.png")\n\n'
 
     def test_image_with_size_and_align(self, tmp_path):
         (tmp_path / "a.png").write_bytes(b"\x89PNG")
@@ -140,6 +142,39 @@ class TestImages:
         renderer = build.TypstRenderer(line_mapping="off", base_dir=str(tmp_path), typst_root=str(tmp_path))
         with pytest.raises(SystemExit):
             renderer.render("![alt](missing.png)\n", filepath=str(tmp_path / "doc.md"))
+
+
+class TestHorizontalRule:
+    """#92: document.marp_compat（既定false）でhr（---/***/___）の挙動を切り替える。"""
+
+    def test_default_is_plain_line_not_pagebreak(self):
+        assert render("---\n") == "#line(length: 100%)\n\n"
+
+    def test_asterisk_and_underscore_variants_are_plain_line_too(self):
+        assert render("***\n") == "#line(length: 100%)\n\n"
+        assert render("___\n") == "#line(length: 100%)\n\n"
+
+    def test_marp_compat_true_treats_hr_as_weak_pagebreak(self):
+        renderer = build.TypstRenderer(line_mapping="off", marp_compat=True)
+        assert renderer.render("---\n") == "#pagebreak(weak: true)\n\n"
+
+    def test_marp_compat_true_applies_to_asterisk_and_underscore_too(self):
+        """実際のMarpitも---/***/___を区別なくスライド区切りとして扱うため、marp_compat時は
+        マークアップ文字で区別しない（区別する案は#92のコメントで検討したが撤回した）。"""
+        renderer = build.TypstRenderer(line_mapping="off", marp_compat=True)
+        assert renderer.render("***\n") == "#pagebreak(weak: true)\n\n"
+        assert renderer.render("___\n") == "#pagebreak(weak: true)\n\n"
+
+
+class TestPagebreakDirective:
+    """#92: document.marp_compat: falseのとき、hrが水平線になる代わりに使う明示的な改ページ記法。"""
+
+    def test_pagebreak_directive_emits_weak_pagebreak(self):
+        assert render("<!-- pagebreak -->\n") == "#pagebreak(weak: true)\n\n"
+
+    def test_pagebreak_directive_works_regardless_of_marp_compat(self):
+        renderer = build.TypstRenderer(line_mapping="off", marp_compat=True)
+        assert renderer.render("<!-- pagebreak -->\n") == "#pagebreak(weak: true)\n\n"
 
 
 class TestHtmlHandling:

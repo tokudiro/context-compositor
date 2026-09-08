@@ -46,7 +46,8 @@ class TestLayoutRight:
         md = f"::: layout-right\nテキスト\n\n![alt]({img.name})\n:::\n"
         renderer = build.TypstRenderer(line_mapping="off", base_dir=str(tmp_path), typst_root=str(tmp_path))
         out = renderer.render(md, filepath=str(md_path))
-        assert "#image(" in out
+        # width/height未指定なのでfit-image()になる（#69）
+        assert "#fit-image(" in out
 
 
 class TestLayoutLeft:

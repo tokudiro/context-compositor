@@ -116,9 +116,31 @@ GitHub形式のalert記法（`> [!NOTE]`等）で、本文と区別した囲み�
 | `height=...` | 画像の高さ（同上） |
 | `align=left` / `align=center` / `align=right` | 画像の左寄せ・中央寄せ・右寄せ（[#75](https://github.com/tokudiro/context-compositor/issues/75)） |
 
+- `width`/`height`をどちらも指定しない場合、画像は実寸（96dpi換算）で配置され、段幅または高さ12cmを超える場合だけ自動縮小されます（拡大はしません、[#69](https://github.com/tokudiro/context-compositor/issues/69)）。段幅いっぱいに引き伸ばしたい場合は`width=100%`を明示してください。
 - `align`を指定しない場合の見た目は変わらず、これまでどおり左寄せです。
 - `width`/`height`と`align`は組み合わせて指定できます（順不同）。
 - Mermaid/PlantUML/Graphvizのフェンス（「図表（Mermaid / Graphviz / PlantUML）」の章）には`align`は無く、常に中央寄せです。
+
+## 水平線・改ページ
+
+`---`/`***`/`___`（本文中の水平線）と改ページの扱いは、`document.marp_compat`（既定`false`）で切り替わります（[#92](https://github.com/tokudiro/context-compositor/issues/92)）。
+
+```markdown
+段落1です。
+
+---
+
+段落2です。
+```
+
+| `document.marp_compat` | `---`/`***`/`___`の意味 | 改ページの書き方 |
+| --- | --- | --- |
+| `false`（既定） | 単なる水平線として表示 | `<!-- pagebreak -->` を明示的に書く |
+| `true` | 改ページ（Marp互換） | `---`/`***`/`___`のいずれか |
+
+- 既定（`false`）はCommonMark/Pandocと同じ解釈です。長文の資料で単なる区切り線として`---`を使いたい場合は、この既定のままで意図通りになります。
+- Marp原稿（スライド区切りに`---`を使う原稿）をそのまま流用したい場合は、`document.marp_compat: true`を設定してください。このとき`---`/`***`/`___`はいずれも改ページとして扱われます（実際のMarpit本体もこの3種を区別なくスライド区切りに使うため、記法による差は付けません）。
+- `<!-- pagebreak -->`は`document.marp_compat`の値に関わらず、常に改ページとして使えます。
 
 ## front-matter
 

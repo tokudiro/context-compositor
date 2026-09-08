@@ -368,6 +368,12 @@ class TypstRenderer:
     # （ファイル内の任意の位置から「以降に持続する」という#16と同種の危険な性質を持つため）。
     DIRECTIVE_RE = re.compile(r'^<!--\s*(header|footer|paginate)\s*:.*-->\s*$')
 
+    # 改ページを明示する記法（#92）。document.marp_compat: falseのとき、hr（---等）が単なる
+    # 水平線になる代わりに使う。header/footer/paginateと違い「その場1回だけ効くアクション」で
+    # 状態を持ち越さないため、#41の懸念（章をまたいで持続する設計は並べ替えと衝突する）には
+    # 抵触しない。marp_compatの値に関わらず常に有効（hrの挙動と独立した明示的な記法のため）。
+    PAGEBREAK_DIRECTIVE_RE = re.compile(r'^<!--\s*pagebreak\s*-->\s*$')
+
     # GitHub Wiki拡張の用語索引記法（#47、#48）。[[用語]]の素の形のみ対応し、区切り記法
     # （[[表示|ページ]]）は使い方が分かりにくいとして不採用（#48）。[[/]]は空にならないよう
     # 中身を1文字以上必須にし、ネストした角括弧（通常の[link]記法との衝突）は対象外にする。
@@ -390,7 +396,7 @@ class TypstRenderer:
 
     def __init__(self, base_dir=None, typst_root=None, mermaid_enabled=True, mermaid_auto_download=False,
                  plantuml_enabled=True, plantuml_auto_download=True, glossary_enabled=False,
-                 line_mapping="block"):
+                 line_mapping="block", marp_compat=False):
         # 対応するMarkdown記法のスコープはGFM + GitHub Wiki（#48）。table/strikethroughはGFM拡張だが
         # commonmarkプリセットにコアルールとして同梱されており、enable()するだけで使える。
         self.md = (MarkdownIt("commonmark").enable("table").enable("strikethrough")
@@ -432,6 +438,11 @@ class TypstRenderer:
         # を跨いで蓄積する（dict、Python 3.7+で挿入順を保持。ビルド末尾で巻末索引の生成に使う）。
         self.glossary_enabled = glossary_enabled
         self.glossary_terms = {}
+        # document.marp_compat: false（既定、#92）。falseならCommonMark準拠で、hr（---/***/___の
+        # いずれも）は単なる水平線として描画し、改ページは<!-- pagebreak -->で明示する。trueなら
+        # 実際のMarpit（---/***/___のいずれもスライド区切りとして扱う）に忠実に、hrを一律
+        # 改ページとして描画する（従来の挙動）。
+        self.marp_compat = marp_compat
         self._glossary_label_counter = 0
         # plugins.plantuml: true（既定。#22）。falseなら```plantumlフェンスをローカルのjava+
         # plantuml.jarで描画せず、他の未対応言語と同じく素のコード表示にフォールバックする。
@@ -930,7 +941,12 @@ class TypstRenderer:
                 result.append('\n)\n\n')
             elif t.type == 'hr':
                 self._emit_srcmap(result, t)
-                result.append('#pagebreak()\n\n')
+                if self.marp_compat:
+                    # 見出し直前の自動改ページと二重に効いて空ページが発生する既知の不具合を
+                    # 避けるため、原則通りweak: trueを使う（doc/spec.md、#92で修正）。
+                    result.append('#pagebreak(weak: true)\n\n')
+                else:
+                    result.append('#line(length: 100%)\n\n')
             elif t.type == 'fence':
                 self._emit_srcmap(result, t)
                 info = t.info.strip()
@@ -986,9 +1002,13 @@ class TypstRenderer:
         警告が出ないよう認識はするが、何も反映しない（値を読み捨てる）。実際に反映する機能は
         一度実装した（#16）が、チャプター（ファイル）をまたいで状態が持続する設計が、この
         ツールの売りである「章の並べ替え」と衝突する（並べ替えると意図しないヘッダーが
-        混入しうる）ため撤回した（#41）。それ以外（未対応のディレクティブ・生のHTMLタグ）は
-        従来どおり警告のみでビルドを継続する。"""
-        if self.DIRECTIVE_RE.match(t.content.strip()):
+        混入しうる）ため撤回した（#41）。<!-- pagebreak -->（#92）はその場1回だけ効くアクション
+        で状態を持ち越さないため、この制約の対象外として実際に反映する。それ以外（未対応の
+        ディレクティブ・生のHTMLタグ）は従来どおり警告のみでビルドを継続する。"""
+        content = t.content.strip()
+        if self.PAGEBREAK_DIRECTIVE_RE.match(content):
+            return '#pagebreak(weak: true)\n\n'
+        if self.DIRECTIVE_RE.match(content):
             return ""
         self._warn_html(t)
         return ""
@@ -1343,7 +1363,14 @@ class TypstRenderer:
                         elif p.startswith("align="):
                             align = p.split("=", 1)[1].strip()
 
-                image_expr = f'#image("{self._resolve_asset(src)}"{width_opt}{height_opt})'
+                # width/height未指定ならfit-image()（実寸基準、はみ出す場合のみ自動縮小）を使う。
+                # 明示指定時は自動縮小をバイパスして#image()へそのまま渡す（拡大も含めて指定値どおり
+                # になる）。mermaid/plantuml等の事前レンダリング画像（_render_sized_image）と同じ
+                # 方針（#69、#82で確立済みの優先順位をそのまま踏襲）。
+                if width_opt or height_opt:
+                    image_expr = f'#image("{self._resolve_asset(src)}"{width_opt}{height_opt})'
+                else:
+                    image_expr = f'#fit-image("{self._resolve_asset(src)}")'
                 # align未指定時は従来通り（暗黙の左寄せ）のまま変更しない（#75）。他の独自属性
                 # （layout-rightのleft=/right=比率等）と同様、align=の値自体の妥当性チェックは
                 # 行わない（不正値はTypst側の#align()呼び出しでコンパイルエラーになる）。
@@ -2283,6 +2310,9 @@ def _build_one(tool_dir, repo_root, font_dir, config_path):
     plantuml_auto_download = bool(plugins_config.get("plantuml_auto_download", True))
     # document.glossary: false（既定。#47）。trueなら[[用語]]を検出し、巻末に索引ページを生成する。
     glossary_enabled = bool(config.get("document", {}).get("glossary", False))
+    # document.marp_compat: false（既定、#92）。trueなら実際のMarpitに合わせ、hr（---/***/___）を
+    # 一律改ページとして描画する。
+    marp_compat = bool(config.get("document", {}).get("marp_compat", False))
     line_mapping = _resolve_line_mapping(config)
 
     outputs_dir, inputs_dir, work_dir, typst_root = _resolve_project_dirs(project_dir, config)
@@ -2300,7 +2330,8 @@ def _build_one(tool_dir, repo_root, font_dir, config_path):
     renderer = TypstRenderer(project_dir, typst_root=typst_root,
                               mermaid_enabled=mermaid_enabled, mermaid_auto_download=mermaid_auto_download,
                               plantuml_enabled=plantuml_enabled, plantuml_auto_download=plantuml_auto_download,
-                              glossary_enabled=glossary_enabled, line_mapping=line_mapping)
+                              glossary_enabled=glossary_enabled, line_mapping=line_mapping,
+                              marp_compat=marp_compat)
     current_landscape, current_paper = global_landscape, global_paper
     current_header, current_footer, current_paginate = effective_global_header, global_footer, global_paginate
     current_background = global_background
