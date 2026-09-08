@@ -14,7 +14,7 @@ This README covers only the essentials needed to get started quickly. For a full
 - Separates the tool itself from the documentation (source files), which can live anywhere outside the repository
 - Python-centric with minimal downloads, no dependency on external servers or SaaS (runs the same way on GitHub Actions and locally on Windows/Linux/macOS)
 
-Files listed in `chapters` are handled differently depending on their extension. `.md`/`.markdown` are converted as Markdown; `.yaml`/`.yml`/`.json` are rendered as monospaced text with syntax highlighting; `.dot`/`.gv`, `.mmd`, and `.puml`/`.plantuml`/`.pu` are each rendered as a one-chapter diagram (Graphviz, Mermaid, and PlantUML respectively); everything else (plain text, code files, etc.) is rendered as plain monospaced text (structuring CSV as a table is not yet implemented). See the [usage guide](doc/usage/) for details.
+Files listed in `chapters` are handled differently depending on their extension. `.md`/`.markdown` are converted as Markdown; `.yaml`/`.yml`/`.json` are rendered as monospaced text with syntax highlighting; `.dot`/`.gv`, `.mmd`, and `.puml`/`.plantuml`/`.pu` are each rendered as a one-chapter diagram (Graphviz, Mermaid, and PlantUML respectively); `.csv` is rendered as a structured Typst table; everything else (plain text, code files, etc.) is rendered as plain monospaced text. See the [usage guide](doc/usage/) for details.
 
 ## Requirements
 
